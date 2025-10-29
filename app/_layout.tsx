@@ -7,7 +7,9 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { initializeStripe } from '@/services/stripe'
+import { initializeStripe } from '@/services/stripe';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { GameProvider } from '@/contexts/GameContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -56,15 +58,20 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="create-game" options={{ presentation: 'modal', title: 'Create Game' }} />
-          <Stack.Screen name="mission" options={{ headerShown: false }} />
-          <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
-        </Stack>
-    </ThemeProvider>
+    <AuthProvider>
+      <GameProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="create-game" options={{ presentation: 'modal', title: 'Create Game' }} />
+            <Stack.Screen name="mission" options={{ headerShown: false }} />
+            <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
+            <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
+          </Stack>
+        </ThemeProvider>
+      </GameProvider>
+    </AuthProvider>
   );
 }
 

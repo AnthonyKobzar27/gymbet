@@ -1,195 +1,252 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, LayoutChangeEvent } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  ScrollView, 
+  TouchableOpacity, 
+  StyleSheet, 
+  ActivityIndicator,
+  Alert,
+  RefreshControl
+} from 'react-native';
 import { router } from 'expo-router';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
+import { useAuth } from '@/contexts/AuthContext';
+import { useGame } from '@/contexts/GameContext';
 
-// Mini Line Chart Component
-const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
-  const width = 180;
-  const padding = 4;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  
-  const points = data.map((value, index) => {
-    const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  }).join(' ');
+// Activity Feed Item Component
+const ActivityItem = ({ activity }: { activity: any }) => (
+  <View style={styles.activityItem}>
+    <View style={styles.activityHeader}>
+      <Text style={styles.activityUser}>
+        {activity.profiles?.display_name || activity.profiles?.username || 'User'}
+      </Text>
+      <Text style={styles.activityTime}>
+        {new Date(activity.created_at).toLocaleDateString()}
+      </Text>
+    </View>
+    <Text style={styles.activityTitle}>{activity.title}</Text>
+    {activity.description && (
+      <Text style={styles.activityDescription}>{activity.description}</Text>
+    )}
+  </View>
+);
 
-  return (
-    <Svg width={width} height={height}>
-      {/* Grid lines */}
-      <Line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#E0E0E0" strokeWidth="1" />
-      {/* Line */}
-      <Path d={`M ${points}`} fill="none" stroke={color} strokeWidth="3" />
-      {/* Points */}
-      {data.map((value, index) => {
-        const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-        const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-        return <Circle key={index} cx={x} cy={y} r="3" fill={color} />;
-      })}
-    </Svg>
-  );
-};
+// Game Card Component
+const GameCard = ({ game, onJoin }: { game: any; onJoin: (gameId: string) => void }) => (
+  <View style={styles.gameCard}>
+    <View style={styles.gameHeader}>
+      <Text style={styles.gameTitle}>{game.title}</Text>
+      <Text style={styles.gameStake}>${(game.stake_amount_cents / 100).toFixed(2)}</Text>
+    </View>
+    {game.description && (
+      <Text style={styles.gameDescription}>{game.description}</Text>
+    )}
+    <View style={styles.gameFooter}>
+      <Text style={styles.gameInfo}>
+        {game.total_participants}/{game.max_participants} players
+      </Text>
+      <Text style={styles.gameInfo}>
+        Ends: {new Date(game.end_time).toLocaleDateString()}
+      </Text>
+    </View>
+    <TouchableOpacity
+      style={styles.joinButton}
+      onPress={() => onJoin(game.id)}
+    >
+      <Text style={styles.joinButtonText}>JOIN CHALLENGE</Text>
+    </TouchableOpacity>
+  </View>
+);
 
-const MiniLineChart2 = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
-  const width = 180;
-  const padding = 4;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  
-  const points = data.map((value, index) => {
-    const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  }).join(' ');
+// Current Game Component
+const CurrentGameCard = ({ game }: { game: any }) => (
+  <View style={styles.currentGameCard}>
+    <Text style={styles.currentGameTitle}>🎯 ACTIVE CHALLENGE</Text>
+    <Text style={styles.currentGameName}>{game.title}</Text>
+    <Text style={styles.currentGameStake}>
+      Staked: ${(game.user_participation?.stake_amount_cents / 100).toFixed(2)}
+    </Text>
+    <Text style={styles.currentGameStatus}>
+      Status: {game.status === 'active' ? 'In Progress' : 'Verification Phase'}
+    </Text>
+    {game.status === 'verification' && !game.user_participation?.submitted_proof && (
+      <TouchableOpacity style={styles.submitProofButton}>
+        <Text style={styles.submitProofButtonText}>SUBMIT PROOF</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+);
 
-  return (
-    <Svg width={width} height={height}>
-      {/* Grid lines */}
-      <Line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#E0E0E0" strokeWidth="1" />
-      {/* Line */}
-      <Path d={`M ${points}`} fill="none" stroke={color} strokeWidth="3" />
-      {/* Points */}
-      {data.map((value, index) => {
-        const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-        const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-        return <Circle key={index} cx={x} cy={y} r="3" fill={color} />;
-      })}
-    </Svg>
-  );
-};
-
-
-
-interface FeedItem {
-  id: string;
-  userHash: string;
-  action: string;
-  timestamp: string;
-  type: 'wakeup' | 'comment' | 'bet' | 'win';
-}
+// Guest Welcome Component
+const GuestWelcome = () => (
+  <View style={styles.guestWelcome}>
+    <Text style={styles.guestTitle}>Welcome to Snooze! 🎯</Text>
+    <Text style={styles.guestSubtitle}>
+      Bet on your discipline goals and win money when you achieve them!
+    </Text>
+    <TouchableOpacity
+      style={styles.guestButton}
+      onPress={() => router.push('/auth')}
+    >
+      <Text style={styles.guestButtonText}>GET STARTED</Text>
+    </TouchableOpacity>
+  </View>
+);
 
 export default function HomeScreen() {
-  const [activeGame] = useState(true);
-  const [inGame, setInGame] = useState(false);
+  const { user, profile, loading: authLoading } = useAuth();
+  const { 
+    currentUserGame, 
+    activeGames, 
+    activities, 
+    loadingGames, 
+    loadingActivities,
+    refreshGames,
+    refreshActivities,
+    joinGame 
+  } = useGame();
   
-  // Mock data for charts
-  const sleepData = [6.5, 7.2, 5.8, 8.1, 7.5, 6.0, 7.8]; // Last 7 days of sleep
-  const profitData = [0, 5, 3, 8, 15, 20, 25]; // Cumulative profit over week
-  
-  // Mock feed data
-  const feedItems: FeedItem[] = [
-    { id: '1', userHash: '0x742d35Cc6634C0532925a3b8', action: 'woke up at 6:30 AM and won $10!', timestamp: '2 min ago', type: 'wakeup' },
-    { id: '2', userHash: '0x89Ab23Ef5678C0532925a3b9', action: 'said: "Let\'s go! Easy money"', timestamp: '15 min ago', type: 'comment' },
-    { id: '3', userHash: '0x456f78Cd9012C0532925a3c0', action: 'joined a new game with $5 stake', timestamp: '1 hour ago', type: 'bet' },
-    { id: '4', userHash: '0x123e45Bc6789C0532925a3d1', action: 'woke up at 7:00 AM and won $15!', timestamp: '2 hours ago', type: 'win' },
-    { id: '5', userHash: '0x987g65Hi4321C0532925a3e2', action: 'said: "Morning crew checking in!"', timestamp: '3 hours ago', type: 'comment' },
-  ];
-  
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refreshGames(), refreshActivities()]);
+    setRefreshing(false);
+  };
+
+  const handleJoinGame = async (gameId: string) => {
+    if (!user) {
+      Alert.alert('Login Required', 'Please login to join challenges');
+      router.push('/auth');
+      return;
+    }
+
+    Alert.alert(
+      'Join Challenge',
+      'Are you sure you want to join this challenge?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Join',
+          onPress: async () => {
+            const { error } = await joinGame(gameId);
+            if (error) {
+              Alert.alert('Error', error.message);
+            } else {
+              Alert.alert('Success', 'Successfully joined the challenge!');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleCreateGame = () => {
+    if (!user) {
+      Alert.alert('Login Required', 'Please login to create challenges');
+      router.push('/auth');
+      return;
+    }
+    router.push('/create-game');
+  };
+
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#000" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
     <ImageBackground
       source={require('../../assets/images/AppBackground.jpg')}
       style={styles.background}
-      imageStyle={{resizeMode: "cover"}}
+      imageStyle={{ resizeMode: "cover" }}
     >
-    <SafeAreaView style={{ flex: 1 }}>
-      <View style = {[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
-      <ScrollView style={styles.scrollContent}>
-        <View style={styles.content}>
-
-          {/* Sleep Today with Chart */}
-          <TouchableOpacity 
-            style={styles.arcadeCard}
-            onPress={() => console.log("Sleep history tapped")}
-          >
-            <View style={styles.cardInner}>
-              <View style={styles.metricRow}>
-                <View style={styles.metricLeft}>
-                  <Text style={styles.statLabel}>SLEEP TODAY</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>7h</Text>
-                </View>
-                <View style={styles.chartContainer}>
-                  <MiniLineChart data={sleepData} color="#000" height={60} />
-                </View>
-              </View>
-              <View style={styles.dividerLight} />
-              <View style={styles.linkRow}>
-                <Text style={styles.linkText}>VIEW SLEEP HISTORY →</Text>
+      <SafeAreaView style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+        >
+          {!user ? (
+            // Guest View
+            <GuestWelcome />
+          ) : currentUserGame ? (
+            // User has active game - show activity feed
+            <View style={styles.content}>
+              <CurrentGameCard game={currentUserGame} />
+              
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>🔥 ACTIVITY FEED</Text>
+                {loadingActivities ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : activities.length > 0 ? (
+                  activities.slice(0, 10).map((activity) => (
+                    <ActivityItem key={activity.id} activity={activity} />
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>No recent activity</Text>
+                )}
               </View>
             </View>
-          </TouchableOpacity>
-
-          {/* Profit with Chart */}
-          <TouchableOpacity 
-            style={styles.arcadeCard}
-            onPress={() => console.log("Profit history tapped")}
-          >
-            <View style={styles.cardInner}>
-              <View style={styles.metricRow}>
-                <View style={styles.metricLeft}>
-                  <Text style={styles.statLabel}>TOTAL PROFIT</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>$25</Text>
-                </View>
-                <View style={styles.chartContainer}>
-                <MiniLineChart2 data={profitData} color="#000" height={60} />
-                </View>
+          ) : (
+            // User has no active game - show available games
+            <View style={styles.content}>
+              <View style={styles.welcomeSection}>
+                <Text style={styles.welcomeTitle}>
+                  Welcome back, {profile?.display_name || profile?.username}! 👋
+                </Text>
+                <Text style={styles.welcomeSubtitle}>
+                  Ready to challenge yourself?
+                </Text>
               </View>
-              <View style={styles.dividerLight} />
-              <View style={styles.linkRow}>
-                <Text style={styles.linkText}>VIEW PROFITS →</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
 
-          {/* Feed Section */}
-          <View style={styles.arcadeCard}>
-            <View style={styles.cardInner}>
-              <Text style={styles.cardTitle}>ACTIVITY FEED</Text>
-              <View style={styles.spacer} />
-              
-              {feedItems.map((item) => (
-                <View key={item.id} style={styles.feedItem}>
-                  <View style={styles.feedHeader}>
-                    <View style={styles.feedUserRow}>
-                      <Text style={styles.feedEmoji}></Text>
-                      <Text style={styles.feedUser}>{item.userHash}</Text>
-                    </View>
-                    <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
-                  </View>
-                  <Text style={styles.feedAction}>{item.action}</Text>
-                </View>
-              ))}
-              
-              <TouchableOpacity style={styles.viewMoreButton}>
-                <Text style={styles.viewMoreText}>VIEW MORE ACTIVITY →</Text>
+              <TouchableOpacity
+                style={styles.createGameButton}
+                onPress={handleCreateGame}
+              >
+                <Text style={styles.createGameButtonText}>+ CREATE NEW CHALLENGE</Text>
               </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Action Buttons */}
-          <TouchableOpacity 
-            style={styles.buttonPrimary}
-            onPress={() => router.push('/create-game' as any)}
-          >
-            <Text style={styles.buttonPrimaryText}>CREATE NEW GAME</Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.buttonSecondary}
-            onPress={() => router.push('/create-game' as any)}
-          >
-            <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
-          </TouchableOpacity>
-          
-        </View>
-      </ScrollView>
-      </View>
-    </SafeAreaView>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>🎯 AVAILABLE CHALLENGES</Text>
+                {loadingGames ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : activeGames.length > 0 ? (
+                  activeGames.slice(0, 5).map((game) => (
+                    <GameCard 
+                      key={game.id} 
+                      game={game} 
+                      onJoin={handleJoinGame}
+                    />
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>No active challenges available</Text>
+                )}
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>📈 RECENT ACTIVITY</Text>
+                {loadingActivities ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : activities.length > 0 ? (
+                  activities.slice(0, 5).map((activity) => (
+                    <ActivityItem key={activity.id} activity={activity} />
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>No recent activity</Text>
+                )}
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
@@ -197,202 +254,296 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    width: '100%', 
-    height: '100%',
-  },
-  scrollWrapper: { 
-    overflow: 'hidden' 
   },
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
-    padding: 20,
+    padding: 16,
+    paddingTop: 100, // Account for header
   },
-  arcadeCard: {
-    borderWidth: 4,
-    borderColor: '#000',
-    backgroundColor: '#FFF',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 6, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-  },
-  cardInner: {
-    padding: 20,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_800ExtraBold',
-    letterSpacing: 0.5,
-  },
-  spacer: {
-    height: 16,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  metricLeft: {
+  loadingContainer: {
     flex: 1,
-    minWidth: 100,
-    maxWidth: 150,
-  },
-  statLabel: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  statValue: {
-    fontSize: 36,
-    fontFamily: 'Inter_800ExtraBold',
-    marginBottom: 4,
-    minHeight: 45,
-  },
-  statSubtext: {
-    fontSize: 11,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#4CAF50',
-  },
-  chartContainer: {
-    alignItems: 'flex-start',
     justifyContent: 'center',
-    marginLeft: 0,
-    maxWidth: 180,
-    overflow: 'hidden',
-  },
-  chartLabel: {
-    fontSize: 8,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
-    marginTop: 4,
-    color: '#666',
-  },
-  dividerLight: {
-    height: 2,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 12,
-  },
-  linkRow: {
-    alignItems: 'flex-end',
-  },
-  linkText: {
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
-  },
-  feedItem: {
-    borderWidth: 3,
-    borderColor: '#000',
-    backgroundColor: '#FAFAFA',
-    padding: 12,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
-  },
-  feedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    backgroundColor: '#fdcff3',
   },
-  feedUserRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  feedEmoji: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  feedUser: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    color: '#666',
-    letterSpacing: 0.3,
-  },
-  feedTimestamp: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#999',
-    letterSpacing: 0.3,
-  },
-  feedAction: {
-    fontSize: 13,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
-    lineHeight: 18,
   },
-  viewMoreButton: {
-    marginTop: 8,
-    paddingVertical: 12,
-    borderWidth: 2,
-    borderColor: '#000',
-    backgroundColor: '#FFF',
+  
+  // Guest Welcome
+  guestWelcome: {
+    margin: 16,
+    marginTop: 120,
+    padding: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 4,
+    borderColor: '#000000',
+    borderRadius: 0,
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: '#000000',
+    shadowOffset: { width: 8, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 8,
+  },
+  guestTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  guestSubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  guestButton: {
+    backgroundColor: '#000000',
+    borderWidth: 4,
+    borderColor: '#000000',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  guestButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 1,
+  },
+
+  // Welcome Section
+  welcomeSection: {
+    marginBottom: 24,
+  },
+  welcomeTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  welcomeSubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+  },
+
+  // Create Game Button
+  createGameButton: {
+    backgroundColor: '#000000',
+    borderWidth: 4,
+    borderColor: '#000000',
+    paddingVertical: 16,
+    marginBottom: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  createGameButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_800ExtraBold',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+
+  // Current Game Card
+  currentGameCard: {
+    backgroundColor: '#E8F5E8',
+    borderWidth: 4,
+    borderColor: '#000000',
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  currentGameTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  currentGameName: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#000000',
+    marginBottom: 8,
+  },
+  currentGameStake: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    marginBottom: 4,
+  },
+  currentGameStatus: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    marginBottom: 16,
+  },
+  submitProofButton: {
+    backgroundColor: '#FF6B35',
+    borderWidth: 2,
+    borderColor: '#000000',
+    paddingVertical: 12,
+    shadowColor: '#000000',
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 2,
   },
-  viewMoreText: {
-    fontSize: 10,
-    fontFamily: 'Inter_800ExtraBold',
-    letterSpacing: 0.5,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 10,
-    paddingTop: 40,
-    overflow: 'hidden',
-  },
-  buttonPrimary: {
-    backgroundColor: '#000',
-    borderWidth: 4,
-    borderColor: '#000',
-    padding: 18,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-  },
-  buttonPrimaryText: {
-    color: '#FFF',
-    textAlign: 'center',
-    fontFamily: 'Inter_800ExtraBold',
+  submitProofButtonText: {
+    color: '#FFFFFF',
     fontSize: 14,
+    fontFamily: 'Inter_800ExtraBold',
+    textAlign: 'center',
     letterSpacing: 1,
   },
-  buttonSecondary: {
-    backgroundColor: '#FFF',
-    borderWidth: 4,
-    borderColor: '#000',
-    padding: 18,
+
+  // Sections
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
     marginBottom: 16,
-    shadowColor: '#000',
+  },
+  emptyText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    textAlign: 'center',
+    padding: 24,
+  },
+
+  // Game Cards
+  gameCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3,
+    borderColor: '#000000',
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000000',
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
   },
-  buttonSecondaryText: {
-    color: '#000',
-    textAlign: 'center',
+  gameHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  gameTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: '#000000',
+    flex: 1,
+  },
+  gameStake: {
+    fontSize: 16,
     fontFamily: 'Inter_800ExtraBold',
+    color: '#FF6B35',
+  },
+  gameDescription: {
     fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  gameFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  gameInfo: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+  },
+  joinButton: {
+    backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: '#000000',
+    paddingVertical: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  joinButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_800ExtraBold',
+    textAlign: 'center',
     letterSpacing: 1,
+  },
+
+  // Activity Items
+  activityItem: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    padding: 12,
+    marginBottom: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  activityUser: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#000000',
+  },
+  activityTime: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+  },
+  activityTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#000000',
+    marginBottom: 4,
+  },
+  activityDescription: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    lineHeight: 16,
   },
 });

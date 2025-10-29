@@ -5,7 +5,9 @@ import { Modal, TouchableOpacity, Text, StyleSheet, View, Platform} from 'react-
 // import { useWallet } from '../providers/WalletConnectProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import PaymentModal from '@/components/modals/PaymentModal';
-import { getUserBalance } from '@/services/stripe';
+import { getUserBalance } from '@/services/walletService';
+import { useAuth } from '@/contexts/AuthContext';
+import { router } from 'expo-router';
 
 
 // You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
@@ -17,14 +19,17 @@ function TabBarIcon(props: {
 }
 
 export function HeaderRight() {
+  const { user, profile, signOut } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [balance, setBalance] = useState(0);
 
   // Load balance when component mounts and when payment modal closes
   useEffect(() => {
-    loadBalance();
-  }, []);
+    if (user) {
+      loadBalance();
+    }
+  }, [user]);
 
   const loadBalance = async () => {
     try {
@@ -35,11 +40,24 @@ export function HeaderRight() {
     }
   };
 
+  const handleProfilePress = () => {
+    if (!user) {
+      router.push('/auth');
+    } else {
+      router.push('/profile');
+    }
+  };
+
   const handleConnectCrypto = () => {
     setModalVisible(false); 
   };
 
   const handleConnectCash = () => {
+    if (!user) {
+      setModalVisible(false);
+      router.push('/auth');
+      return;
+    }
     setModalVisible(false);
     setPaymentModalVisible(true);
   };
@@ -50,27 +68,39 @@ export function HeaderRight() {
     loadBalance();
   };
 
+  const getProfileInitials = () => {
+    if (profile?.display_name) {
+      return profile.display_name.substring(0, 2).toUpperCase();
+    }
+    if (profile?.username) {
+      return profile.username.substring(0, 2).toUpperCase();
+    }
+    return '?';
+  };
+
   return (
     <View style={styles.headerRightContainer}>
-      {/* Balance Display */}
-      <View style={styles.balanceContainer}>
-        <Text style={styles.balanceText}>${balance.toFixed(2)}</Text>
-      </View>
+      {/* Balance Display - Only show if logged in */}
+      {user && (
+        <View style={styles.balanceContainer}>
+          <Text style={styles.balanceText}>${balance.toFixed(2)}</Text>
+        </View>
+      )}
 
       <TouchableOpacity
         style={styles.cryptoButton}
         onPress={() => setModalVisible(true)}
       >
         <Text style={styles.cryptoButtonText}>
-          Connect
+          {user ? 'Connect' : 'Login'}
         </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.profileBubble}
-        onPress={() => console.log("Profile tapped")}
+        style={[styles.profileBubble, !user && styles.profileBubbleGuest]}
+        onPress={handleProfilePress}
       >
-        <Text style={styles.avatarText}>JD</Text>
+        <Text style={styles.avatarText}>{getProfileInitials()}</Text>
       </TouchableOpacity>
 
       {/* Connect Modal */}
@@ -336,5 +366,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 0.5,
+  },
+  profileBubbleGuest: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#999999',
   },
 });
