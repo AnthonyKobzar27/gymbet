@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -13,10 +13,23 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { UserAvatar } from '@/components/Avatar';
 
 export default function ProfileScreen() {
-  const { user, signOut, loading } = useAuth();
+  const { user, signOut, loading, getUserProfile } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user) {
+        const profile = await getUserProfile();
+        setUserProfile(profile);
+      }
+    };
+
+    fetchUserProfile();
+  }, [user, getUserProfile]);
 
   const handleSignOut = () => {
     Alert.alert(
@@ -88,12 +101,16 @@ export default function ProfileScreen() {
             {/* Profile Header */}
             <View style={styles.profileHeader}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>twinna</Text>
+                {userProfile?.hash ? (
+                  <UserAvatar hash={userProfile.hash} size={72} />
+                ) : (
+                  <Text style={styles.avatarText}>...</Text>
+                )}
               </View>
               <Text style={styles.name}>
-                gonna
+                {userProfile?.username || 'Loading...'}
               </Text>
-              <Text style={styles.username}>@goon</Text>
+              <Text style={styles.username}>@{userProfile?.username || 'user'}</Text>
 
             </View>
 

@@ -10,6 +10,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username : string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  getUserProfile: () => Promise<{ username: string; email: string; hash: string } | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -75,7 +76,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 🔹 SIGN IN
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
@@ -110,6 +110,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // 🔹 GET USER PROFILE
+  const getUserProfile = async () => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username, email, hash')
+        .eq('email', user.email)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return null;
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+      return null;
+    }
+  };
+
   const value = {
     user,
     session,
@@ -117,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp,
     signIn,
     signOut,
+    getUserProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

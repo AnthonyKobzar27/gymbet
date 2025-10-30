@@ -6,6 +6,7 @@ import { Modal, TouchableOpacity, Text, StyleSheet, View, Platform} from 'react-
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import PaymentModal from '@/components/modals/PaymentModal';
 import { useAuth } from '@/contexts/AuthContext';
+import { UserAvatar } from '@/components/Avatar';
 import { router } from 'expo-router';
 
 
@@ -18,17 +19,26 @@ function TabBarIcon(props: {
 }
 
 export function HeaderRight() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, getUserProfile } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [balance, setBalance] = useState(0);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
 
   // Load balance when component mounts and when payment modal closes
   useEffect(() => {
     if (user) {
       loadBalance();
+      loadUserProfile();
     }
   }, [user]);
+
+  const loadUserProfile = async () => {
+    if (user) {
+      const profile = await getUserProfile();
+      setUserProfile(profile);
+    }
+  };
 
   const loadBalance = async () => {
     try {
@@ -88,7 +98,11 @@ export function HeaderRight() {
         style={[styles.profileBubble, !user && styles.profileBubbleGuest]}
         onPress={handleProfilePress}
       >
-        <Text style={styles.avatarText}>goon</Text>
+        {userProfile?.hash ? (
+          <UserAvatar hash={userProfile.hash} size={36} />
+        ) : (
+          <Text style={styles.avatarText}>...</Text>
+        )}
       </TouchableOpacity>
 
       {/* Connect Modal */}

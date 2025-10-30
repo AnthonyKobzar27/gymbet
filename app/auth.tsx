@@ -34,7 +34,7 @@ export default function AuthScreen() {
           router.back();
         }
       } else {
-        const { error } = await signUp(email, username, password);
+        const { error } = await signUp(email, password, username);
         if (error) {
           Alert.alert('Signup Failed', error.message);
         } else {
