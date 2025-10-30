@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { supabase } from './lib/supabase';
+import * as dotenv from 'dotenv';
+
+dotenv.config({ override: true });
 
 export default function DebugAuth() {
   const [email, setEmail] = useState('test@example.com');
@@ -113,3 +116,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
+

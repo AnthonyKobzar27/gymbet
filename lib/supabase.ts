@@ -6,6 +6,13 @@ import { Database } from './database.types';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://your-project.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'your-anon-key';
 
+// Validate environment variables
+if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
+  console.error('❌ Missing Supabase environment variables!');
+  console.error('EXPO_PUBLIC_SUPABASE_URL:', process.env.EXPO_PUBLIC_SUPABASE_URL ? '✅ Set' : '❌ Missing');
+  console.error('EXPO_PUBLIC_SUPABASE_ANON_KEY:', process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
+}
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
@@ -30,8 +37,8 @@ export const getUserProfile = async (userId?: string) => {
   const user = userId || (await getCurrentUser())?.id;
   if (!user) return null;
 
-  const { data, error } = await supabase
-    .from('profiles')
+  const { data, error } = await (supabase
+    .from('profiles') as any)
     .select('*')
     .eq('id', user)
     .single();
@@ -49,8 +56,8 @@ export const getUserWallet = async (userId?: string) => {
   const user = userId || (await getCurrentUser())?.id;
   if (!user) return null;
 
-  const { data, error } = await supabase
-    .from('wallets')
+  const { data, error } = await (supabase
+    .from('wallets') as any)
     .select('*')
     .eq('user_id', user)
     .single();
@@ -62,3 +69,5 @@ export const getUserWallet = async (userId?: string) => {
 
   return data;
 };
+
+

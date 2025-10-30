@@ -1,21 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
+import { Database } from '../lib/database.types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-interface Profile {
-  id: string;
-  username: string;
-  display_name?: string;
-  avatar_url?: string;
-  bio?: string;
-  total_games_played: number;
-  total_games_won: number;
-  total_winnings: number;
-  current_streak: number;
-  longest_streak: number;
-  email_verified: boolean;
-}
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface AuthContextType {
   user: User | null;
@@ -25,7 +14,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
-  updateProfile: (updates: Partial<Profile>) => Promise<{ error: any }>;
+  updateProfile: (updates: Database['public']['Tables']['profiles']['Update']) => Promise<{ error: any }>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -123,19 +112,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const username = user.email?.split('@')[0] || `user_${userId.slice(0, 8)}`;
       
+      const profileData: Database['public']['Tables']['profiles']['Insert'] = {
+        id: userId,
+        username: username.toLowerCase(),
+        display_name: username,
+        email_verified: false,
+        total_games_played: 0,
+        total_games_won: 0,
+        total_winnings: 0,
+        current_streak: 0,
+        longest_streak: 0,
+      };
+
       const { data, error } = await supabase
         .from('profiles')
-        .insert({
-          id: userId,
-          username: username.toLowerCase(),
-          display_name: username,
-          email_verified: false,
-          total_games_played: 0,
-          total_games_won: 0,
-          total_winnings: 0,
-          current_streak: 0,
-          longest_streak: 0,
-        })
+        .insert(profileData as any)
         .select()
         .single();
 
@@ -146,12 +137,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(data);
         
         // Also create wallet
+        const walletData: Database['public']['Tables']['wallets']['Insert'] = {
+          user_id: userId,
+          balance_cents: 0,
+        };
+
         const { error: walletError } = await supabase
           .from('wallets')
-          .insert({
-            user_id: userId,
-            balance_cents: 0,
-          });
+          .insert(walletData as any);
 
         if (walletError) {
           console.error('Error creating wallet for existing user:', walletError);
@@ -167,7 +160,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Check if username is already taken
       const { data: existingUser } = await supabase
         .from('profiles')
         .select('username')
@@ -178,7 +170,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: { message: 'Username already taken' } };
       }
 
-      // Sign up user
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -191,37 +182,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) return { error };
 
-      // Create profile if signup successful
       if (data.user && !error) {
-        // Wait a moment for the auth session to be established
         await new Promise(resolve => setTimeout(resolve, 1000));
         
+        const profileData: Database['public']['Tables']['profiles']['Insert'] = {
+          id: data.user.id,
+          username: username.toLowerCase(),
+          display_name: username,
+          email_verified: false,
+          total_games_played: 0,
+          total_games_won: 0,
+          total_winnings: 0,
+          current_streak: 0,
+          longest_streak: 0,
+        };
+
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: data.user.id,
-            username: username.toLowerCase(),
-            display_name: username,
-            email_verified: false,
-            total_games_played: 0,
-            total_games_won: 0,
-            total_winnings: 0,
-            current_streak: 0,
-            longest_streak: 0,
-          });
+          .insert(profileData as any);
 
         if (profileError) {
           console.error('Error creating profile:', profileError);
-          // Don't return error here - profile creation can be retried later
           console.warn('Profile creation failed, but signup was successful. Profile will be created on next login.');
         } else {
-          // Create wallet for the user
+          const walletData: Database['public']['Tables']['wallets']['Insert'] = {
+            user_id: data.user.id,
+            balance_cents: 0,
+          };
+
           const { error: walletError } = await supabase
             .from('wallets')
-            .insert({
-              user_id: data.user.id,
-              balance_cents: 0,
-            });
+            .insert(walletData as any);
 
           if (walletError) {
             console.error('Error creating wallet:', walletError);
@@ -281,12 +272,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateProfile = async (updates: Partial<Profile>) => {
+  const updateProfile = async (updates: Database['public']['Tables']['profiles']['Update']) => {
     if (!user) return { error: { message: 'Not authenticated' } };
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
+      const { data, error } = await (supabase
+        .from('profiles') as any)
         .update(updates)
         .eq('id', user.id)
         .select()
