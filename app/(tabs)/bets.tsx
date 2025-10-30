@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@/contexts/AuthContext';
+import { router } from 'expo-router';
 
 interface VerificationEntry {
   id: string;
@@ -13,7 +15,8 @@ interface VerificationEntry {
 
 export default function BetsScreen() {
   const [timeElapsed, setTimeElapsed] = useState('2h 34m');
-  
+  const { user, loading: authLoading } = useAuth();
+
   // Pool competitors
   const competitors = [
     '0x742d35Cc6634C0532925a3b8',
@@ -36,6 +39,20 @@ export default function BetsScreen() {
       style={styles.background}
       imageStyle={{resizeMode: "cover"}}
     >
+      {!user ? (
+        <View style={styles.guestContainer}>
+        <Text style={styles.guestTitle}>Bets</Text>
+        <Text style={styles.guestSubtitle}>
+          Please login to view your bets
+        </Text>
+        <TouchableOpacity
+          style={styles.loginButton}
+          onPress={() => router.push('/auth')}
+        >
+          <Text style={styles.loginButtonText}>LOGIN</Text>
+        </TouchableOpacity>
+      </View>
+      ) : (
       <SafeAreaView style={{ flex: 1 }}>
         <View style = {[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
           <ScrollView style={styles.scrollContent}>
@@ -126,6 +143,7 @@ export default function BetsScreen() {
           </ScrollView>
         </View>
       </SafeAreaView>
+      )}
     </ImageBackground>
   );
 }
@@ -232,6 +250,44 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 3,
+  },
+  guestContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  guestTitle: {
+    fontSize: 32,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+    marginBottom: 16,
+  },
+  guestSubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  loginButton: {
+    backgroundColor: '#000000',
+    borderWidth: 4,
+    borderColor: '#000000',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 1,
   },
   verificationHeader: {
     flexDirection: 'row',

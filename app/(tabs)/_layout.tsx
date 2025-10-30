@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import PaymentModal from '@/components/modals/PaymentModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
+import { Image } from 'react-native';
 import { router } from 'expo-router';
 
 
@@ -98,10 +99,13 @@ export function HeaderRight() {
         style={[styles.profileBubble, !user && styles.profileBubbleGuest]}
         onPress={handleProfilePress}
       >
-        {userProfile?.hash ? (
+        {user && userProfile?.hash ? (
           <UserAvatar hash={userProfile.hash} size={36} />
         ) : (
-          <Text style={styles.avatarText}>...</Text>
+          <Image 
+            source={require('@/assets/images/noprofile.png')} 
+            style={{ width: 40, height: 40, borderRadius: 18 }}
+          />
         )}
       </TouchableOpacity>
 

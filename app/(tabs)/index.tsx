@@ -134,14 +134,31 @@ export default function HomeScreen() {
       imageStyle={{ resizeMode: "cover" }}
     >
       <SafeAreaView style={styles.container}>
-        <ScrollView
-          style={styles.scrollView}
-          refreshControl={
-            <RefreshControl refreshing={refreshing}  />
-          }
-        >
-         
-        </ScrollView>
+        {!user ? (
+          <View style={styles.loginPromptContainer}>
+            <View style={styles.loginPrompt}>
+              <Text style={styles.loginPromptTitle}>Welcome to Snooze!</Text>
+              <Text style={styles.loginPromptText}>
+                Join the discipline challenge community. Bet on your goals and win rewards!
+              </Text>
+              <TouchableOpacity 
+                style={styles.loginPromptButton}
+                onPress={() => router.push('/auth')}
+              >
+                <Text style={styles.loginPromptButtonText}>LOG IN / SIGN UP</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.scrollView}
+            refreshControl={
+              <RefreshControl refreshing={refreshing}  />
+            }
+          >
+           
+          </ScrollView>
+        )}
       </SafeAreaView>
     </ImageBackground>
   );
@@ -441,5 +458,61 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#666666',
     lineHeight: 16,
+  },
+  loginPromptContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loginPrompt: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 4,
+    borderColor: '#000000',
+    borderRadius: 0,
+    padding: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 8, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 8,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 350,
+  },
+  loginPromptTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  loginPromptText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  loginPromptButton: {
+    backgroundColor: '#000000',
+    borderWidth: 4,
+    borderColor: '#000000',
+    borderRadius: 0,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  loginPromptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_800ExtraBold',
+    textAlign: 'center',
+    letterSpacing: 1,
   },
 });
