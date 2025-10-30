@@ -13,11 +13,9 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { useGame } from '@/contexts/GameContext';
 
 export default function ProfileScreen() {
-  const { user, profile, signOut, loading } = useAuth();
-  const { userGames } = useGame();
+  const { user, signOut, loading } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
 
   const handleSignOut = () => {
@@ -39,19 +37,9 @@ export default function ProfileScreen() {
     );
   };
 
-  const getProfileInitials = () => {
-    if (profile?.display_name) {
-      return profile.display_name.substring(0, 2).toUpperCase();
-    }
-    if (profile?.username) {
-      return profile.username.substring(0, 2).toUpperCase();
-    }
-    return '?';
-  };
 
   const getWinRate = () => {
-    if (!profile || profile.total_games_played === 0) return 0;
-    return Math.round((profile.total_games_won / profile.total_games_played) * 100);
+    return 0;
   };
 
   if (!user) {
@@ -100,25 +88,23 @@ export default function ProfileScreen() {
             {/* Profile Header */}
             <View style={styles.profileHeader}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{getProfileInitials()}</Text>
+                <Text style={styles.avatarText}>twinna</Text>
               </View>
               <Text style={styles.name}>
-                {profile?.display_name || profile?.username || 'User'}
+                gonna
               </Text>
-              <Text style={styles.username}>@{profile?.username}</Text>
-              {profile?.bio && (
-                <Text style={styles.bio}>{profile.bio}</Text>
-              )}
+              <Text style={styles.username}>@goon</Text>
+
             </View>
 
             {/* Stats Cards */}
             <View style={styles.statsContainer}>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{profile?.total_games_played || 0}</Text>
+                <Text style={styles.statNumber}>s</Text>
                 <Text style={styles.statLabel}>Games Played</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{profile?.total_games_won || 0}</Text>
+                <Text style={styles.statNumber}>s</Text>
                 <Text style={styles.statLabel}>Games Won</Text>
               </View>
               <View style={styles.statCard}>
@@ -133,7 +119,7 @@ export default function ProfileScreen() {
                 <Text style={styles.cardTitle}>💰 TOTAL EARNINGS</Text>
                 <View style={styles.spacer} />
                 <Text style={styles.earningsAmount}>
-                  ${((profile?.total_winnings || 0) / 100).toFixed(2)}
+                  sh
                 </Text>
               </View>
             </View>
@@ -145,11 +131,11 @@ export default function ProfileScreen() {
                 <View style={styles.spacer} />
                 <View style={styles.streakContainer}>
                   <View style={styles.streakItem}>
-                    <Text style={styles.streakNumber}>{profile?.current_streak || 0}</Text>
+                    <Text style={styles.streakNumber}>ama</Text>
                     <Text style={styles.streakLabel}>Current</Text>
                   </View>
                   <View style={styles.streakItem}>
-                    <Text style={styles.streakNumber}>{profile?.longest_streak || 0}</Text>
+                    <Text style={styles.streakNumber}>drank</Text>
                     <Text style={styles.streakLabel}>Best</Text>
                   </View>
                 </View>
@@ -161,31 +147,7 @@ export default function ProfileScreen() {
               <View style={styles.cardInner}>
                 <Text style={styles.cardTitle}>📊 RECENT GAMES</Text>
                 <View style={styles.spacer} />
-                {userGames.length > 0 ? (
-                  userGames.slice(0, 5).map((game) => (
-                    <View key={game.id} style={styles.gameItem}>
-                      <View style={styles.gameInfo}>
-                        <Text style={styles.gameTitle}>{game.title}</Text>
-                        <Text style={styles.gameDate}>
-                          {new Date(game.created_at).toLocaleDateString()}
-                        </Text>
-                      </View>
-                      <View style={styles.gameResult}>
-                        <Text style={[
-                          styles.gameStatus,
-                          game.user_participation?.is_winner && styles.gameStatusWin
-                        ]}>
-                          {game.status === 'completed' 
-                            ? (game.user_participation?.is_winner ? 'WON' : 'LOST')
-                            : game.status.toUpperCase()
-                          }
-                        </Text>
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>No games played yet</Text>
-                )}
+                
               </View>
             </View>
 

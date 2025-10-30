@@ -9,7 +9,6 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import { initializeStripe } from '@/services/stripe';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { GameProvider } from '@/contexts/GameContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -59,7 +58,6 @@ function RootLayoutNav() {
 
   return (
     <AuthProvider>
-      <GameProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -70,7 +68,6 @@ function RootLayoutNav() {
             <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
           </Stack>
         </ThemeProvider>
-      </GameProvider>
     </AuthProvider>
   );
 }

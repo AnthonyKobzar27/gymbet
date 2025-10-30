@@ -5,7 +5,6 @@ import { Modal, TouchableOpacity, Text, StyleSheet, View, Platform} from 'react-
 // import { useWallet } from '../providers/WalletConnectProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import PaymentModal from '@/components/modals/PaymentModal';
-import { getUserBalance } from '@/services/walletService';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
 
@@ -19,7 +18,7 @@ function TabBarIcon(props: {
 }
 
 export function HeaderRight() {
-  const { user, profile, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [balance, setBalance] = useState(0);
@@ -33,8 +32,7 @@ export function HeaderRight() {
 
   const loadBalance = async () => {
     try {
-      const currentBalance = await getUserBalance();
-      setBalance(currentBalance);
+      console.log('good here');
     } catch (error) {
       console.error('Error loading balance:', error);
     }
@@ -68,16 +66,6 @@ export function HeaderRight() {
     loadBalance();
   };
 
-  const getProfileInitials = () => {
-    if (profile?.display_name) {
-      return profile.display_name.substring(0, 2).toUpperCase();
-    }
-    if (profile?.username) {
-      return profile.username.substring(0, 2).toUpperCase();
-    }
-    return '?';
-  };
-
   return (
     <View style={styles.headerRightContainer}>
       {/* Balance Display - Only show if logged in */}
@@ -100,7 +88,7 @@ export function HeaderRight() {
         style={[styles.profileBubble, !user && styles.profileBubbleGuest]}
         onPress={handleProfilePress}
       >
-        <Text style={styles.avatarText}>{getProfileInitials()}</Text>
+        <Text style={styles.avatarText}>goon</Text>
       </TouchableOpacity>
 
       {/* Connect Modal */}

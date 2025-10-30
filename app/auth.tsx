@@ -1,16 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, ImageBackground} from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
 
@@ -18,23 +7,13 @@ export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
 
   const handleAuth = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    if (!isLogin && !username) {
-      Alert.alert('Error', 'Please enter a username');
-      return;
-    }
-
-    if (!isLogin && username.length < 3) {
-      Alert.alert('Error', 'Username must be at least 3 characters');
       return;
     }
 
@@ -55,7 +34,7 @@ export default function AuthScreen() {
           router.back();
         }
       } else {
-        const { error } = await signUp(email, password, username);
+        const { error } = await signUp(email, username, password);
         if (error) {
           Alert.alert('Signup Failed', error.message);
         } else {
@@ -77,7 +56,6 @@ export default function AuthScreen() {
     setIsLogin(!isLogin);
     setEmail('');
     setPassword('');
-    setUsername('');
   };
 
   return (
@@ -97,7 +75,8 @@ export default function AuthScreen() {
             }
           </Text>
 
-          {!isLogin && (
+          {
+            !isLogin && (
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Username</Text>
               <TextInput
@@ -110,7 +89,8 @@ export default function AuthScreen() {
                 editable={!loading}
               />
             </View>
-          )}
+            )
+          }
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>

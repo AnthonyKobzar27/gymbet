@@ -13,7 +13,6 @@ import { router } from 'expo-router';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { useGame } from '@/contexts/GameContext';
 
 // Activity Feed Item Component
 const ActivityItem = ({ activity }: { activity: any }) => (
@@ -96,25 +95,9 @@ const GuestWelcome = () => (
 );
 
 export default function HomeScreen() {
-  const { user, profile, loading: authLoading } = useAuth();
-  const { 
-    currentUserGame, 
-    activeGames, 
-    activities, 
-    loadingGames, 
-    loadingActivities,
-    refreshGames,
-    refreshActivities,
-    joinGame 
-  } = useGame();
+  const { user, loading: authLoading } = useAuth();
   
   const [refreshing, setRefreshing] = useState(false);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([refreshGames(), refreshActivities()]);
-    setRefreshing(false);
-  };
 
   const handleJoinGame = async (gameId: string) => {
     if (!user) {
@@ -123,24 +106,7 @@ export default function HomeScreen() {
       return;
     }
 
-    Alert.alert(
-      'Join Challenge',
-      'Are you sure you want to join this challenge?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Join',
-          onPress: async () => {
-            const { error } = await joinGame(gameId);
-            if (error) {
-              Alert.alert('Error', error.message);
-            } else {
-              Alert.alert('Success', 'Successfully joined the challenge!');
-            }
-          }
-        }
-      ]
-    );
+    
   };
 
   const handleCreateGame = () => {
@@ -171,80 +137,10 @@ export default function HomeScreen() {
         <ScrollView
           style={styles.scrollView}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            <RefreshControl refreshing={refreshing}  />
           }
         >
-          {!user ? (
-            // Guest View
-            <GuestWelcome />
-          ) : currentUserGame ? (
-            // User has active game - show activity feed
-            <View style={styles.content}>
-              <CurrentGameCard game={currentUserGame} />
-              
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>🔥 ACTIVITY FEED</Text>
-                {loadingActivities ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : activities.length > 0 ? (
-                  activities.slice(0, 10).map((activity) => (
-                    <ActivityItem key={activity.id} activity={activity} />
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>No recent activity</Text>
-                )}
-              </View>
-            </View>
-          ) : (
-            // User has no active game - show available games
-            <View style={styles.content}>
-              <View style={styles.welcomeSection}>
-                <Text style={styles.welcomeTitle}>
-                  Welcome back, {profile?.display_name || profile?.username}! 👋
-                </Text>
-                <Text style={styles.welcomeSubtitle}>
-                  Ready to challenge yourself?
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.createGameButton}
-                onPress={handleCreateGame}
-              >
-                <Text style={styles.createGameButtonText}>+ CREATE NEW CHALLENGE</Text>
-              </TouchableOpacity>
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>🎯 AVAILABLE CHALLENGES</Text>
-                {loadingGames ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : activeGames.length > 0 ? (
-                  activeGames.slice(0, 5).map((game) => (
-                    <GameCard 
-                      key={game.id} 
-                      game={game} 
-                      onJoin={handleJoinGame}
-                    />
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>No active challenges available</Text>
-                )}
-              </View>
-
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>📈 RECENT ACTIVITY</Text>
-                {loadingActivities ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : activities.length > 0 ? (
-                  activities.slice(0, 5).map((activity) => (
-                    <ActivityItem key={activity.id} activity={activity} />
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>No recent activity</Text>
-                )}
-              </View>
-            </View>
-          )}
+         
         </ScrollView>
       </SafeAreaView>
     </ImageBackground>
