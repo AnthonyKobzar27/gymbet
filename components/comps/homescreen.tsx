@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
+import { useAuth } from '@/contexts/AuthContext';
+import { getStats, initStats, addSleep, addProfit } from '@/lib/homepage_utils';
 
 const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
   const width = 180;
@@ -74,8 +76,53 @@ interface FeedItem {
 
 // Purely presentational home screen – no navigation/auth logic, just UI
 export default function HomeScreen() {
-  const sleepData = [6.5, 7.2, 5.8, 8.1, 7.5, 6.0, 7.8]; // Last 7 days of sleep
-  const profitData = [0, 5, 3, 8, 15, 20, 25]; // Cumulative profit over week
+  const { getUserProfile } = useAuth();
+  const [sleepLogged, setSleepLogged] = useState(0);
+  const [profitMade, setProfitMade] = useState(0);
+  const [sleepData, setSleepData] = useState([0]);
+  const [profitData, setProfitData] = useState([0]);
+  const [userHash, setUserHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    const profile = await getUserProfile();
+    if (profile?.hash) {
+      setUserHash(profile.hash);
+      await initStats(profile.hash);
+      const stats = await getStats(profile.hash);
+      setSleepLogged(stats.sleepLogged);
+      setProfitMade(stats.profitMade);
+      setSleepData(stats.sleepHistory.length > 0 ? stats.sleepHistory : [0]);
+      setProfitData(stats.profitHistory.length > 0 ? stats.profitHistory : [0]);
+    }
+  };
+
+  const handleAddSleep = async () => {
+    if (!userHash) return;
+
+    const result = await addSleep(userHash, 8);
+    if (result.ok) {
+      Alert.alert('Success', 'Added 8 hours of sleep!');
+      loadUserData();
+    } else {
+      Alert.alert('Error', 'Failed to add sleep');
+    }
+  };
+
+  const handleAddProfit = async () => {
+    if (!userHash) return;
+
+    const result = await addProfit(userHash, 10);
+    if (result.ok) {
+      Alert.alert('Success', 'Added $10 profit!');
+      loadUserData();
+    } else {
+      Alert.alert('Error', 'Failed to add profit');
+    }
+  };
   
   // Mock feed data
   const feedItems: FeedItem[] = [
@@ -98,15 +145,15 @@ export default function HomeScreen() {
         <View style={styles.content}>
 
           {/* Sleep Today with Chart */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.arcadeCard}
-            onPress={() => console.log("Sleep history tapped")}
+            onPress={handleAddSleep}
           >
             <View style={styles.cardInner}>
               <View style={styles.metricRow}>
                 <View style={styles.metricLeft}>
-                  <Text style={styles.statLabel}>SLEEP TODAY</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>7h</Text>
+                  <Text style={styles.statLabel}>SLEEP LOGGED</Text>
+                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{sleepLogged}h</Text>
                 </View>
                 <View style={styles.chartContainer}>
                   <MiniLineChart data={sleepData} color="#000" height={60} />
@@ -114,21 +161,21 @@ export default function HomeScreen() {
               </View>
               <View style={styles.dividerLight} />
               <View style={styles.linkRow}>
-                <Text style={styles.linkText}>VIEW SLEEP HISTORY →</Text>
+                <Text style={styles.linkText}>TAP TO ADD 8H →</Text>
               </View>
             </View>
           </TouchableOpacity>
 
           {/* Profit with Chart */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.arcadeCard}
-            onPress={() => console.log("Profit history tapped")}
+            onPress={handleAddProfit}
           >
             <View style={styles.cardInner}>
               <View style={styles.metricRow}>
                 <View style={styles.metricLeft}>
                   <Text style={styles.statLabel}>TOTAL PROFIT</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>$25</Text>
+                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>${profitMade}</Text>
                 </View>
                 <View style={styles.chartContainer}>
                 <MiniLineChart2 data={profitData} color="#000" height={60} />
@@ -136,7 +183,7 @@ export default function HomeScreen() {
               </View>
               <View style={styles.dividerLight} />
               <View style={styles.linkRow}>
-                <Text style={styles.linkText}>VIEW PROFITS →</Text>
+                <Text style={styles.linkText}>TAP TO ADD $10 →</Text>
               </View>
             </View>
           </TouchableOpacity>

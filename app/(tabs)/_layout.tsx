@@ -10,6 +10,7 @@ import { UserAvatar } from '@/components/Avatar';
 import { Image } from 'react-native';
 import LoginModal from '@/components/modals/LoginModal';
 import { router } from 'expo-router';
+import { getBalance } from '@/lib/transaction_utils';
 
 
 // You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
@@ -25,16 +26,24 @@ export function HeaderRight() {
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [balance, setBalance] = useState(0);
-  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
 
-  // Load balance when component mounts and when payment modal closes
   useEffect(() => {
     if (user) {
-      loadBalance();
       loadUserProfile();
+    } else {
+      setUserProfile(null);
+      setBalance(0);
     }
   }, [user]);
+
+  // Load balance whenever userProfile changes
+  useEffect(() => {
+    if (userProfile?.hash) {
+      loadBalance();
+    }
+  }, [userProfile]);
 
   const loadUserProfile = async () => {
     if (user) {
@@ -44,10 +53,9 @@ export function HeaderRight() {
   };
 
   const loadBalance = async () => {
-    try {
-      console.log('good here');
-    } catch (error) {
-      console.error('Error loading balance:', error);
+    if (userProfile?.hash) {
+      const newBalance = await getBalance(userProfile.hash);
+      setBalance(newBalance);
     }
   };
 

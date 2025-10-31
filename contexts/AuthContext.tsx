@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import SHA256 from "crypto-js/sha256";
+import { initBalance, changeBalance, getBalance, deposit, withdraw } from '../lib/transaction_utils';
 
 interface AuthContextType {
   user: User | null;
@@ -10,7 +11,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username : string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
-  getUserProfile: () => Promise<{ username: string; email: string; hash: string } | null>;
+  getUserProfile: () => Promise<{ username: string; email: string; hash: string, balance: number } | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,22 +50,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUp = async (email: string, password: string, username: string) => {
     try {
       setLoading(true);
+      const normalizedEmail = email.toLowerCase();
+
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
       });
 
       if (error) return { error };
 
-      const userHash = sha256(email + username);
+      const userHash = sha256(normalizedEmail + username);
 
       const {error: profileError} = await supabase.from('profiles').insert({
-        email: email,
+        email: normalizedEmail,
         username: username,
         hash: userHash,
       })
 
-      if (error) return { error };
+      if (profileError) return { error: profileError };
+
+      await initBalance(userHash);
 
       console.log('✅ Signup successful. Check your email for verification.');
       return { error: null };
@@ -80,7 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.toLowerCase(),
         password,
       });
 
@@ -96,7 +101,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 🔹 SIGN OUT
   const signOut = async () => {
     try {
       setLoading(true);
@@ -110,7 +114,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 🔹 GET USER PROFILE
   const getUserProfile = async () => {
     if (!user) return null;
 
@@ -119,14 +122,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('username, email, hash')
         .eq('email', user.email)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching user profile:', error);
         return null;
       }
 
-      return data;
+      if (!data) {
+        console.error('No profile found for user:', user.email);
+        return null;
+      }
+
+      const balance = await getBalance(data.hash);
+
+      return {username: data.username, email: data.email, hash: data.hash, balance: balance};
     } catch (err) {
       console.error('Error fetching user profile:', err);
       return null;

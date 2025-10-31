@@ -14,7 +14,9 @@ import {
   Dimensions
 } from 'react-native';
 import { CardField, useStripe } from '@stripe/stripe-react-native';
-import { getUserBalance, updateUserBalance, addTransaction, createPaymentIntent, confirmPayment, requestWithdrawal } from '../../services/stripe';
+import { addTransaction, createPaymentIntent } from '../../services/stripe';
+import { getBalance, deposit, withdraw } from '../../lib/transaction_utils';
+import { useAuth } from '../../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -30,15 +32,25 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
   const [loading, setLoading] = useState(false);
   const [cardComplete, setCardComplete] = useState(false);
   const { confirmPayment: stripeConfirmPayment } = useStripe();
+  const { getUserProfile } = useAuth();
+  const [userHash, setUserHash] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
-      loadBalance();
+      loadUserHash();
     }
   }, [visible]);
 
-  const loadBalance = async () => {
-    const currentBalance = await getUserBalance();
+  const loadUserHash = async () => {
+    const profile = await getUserProfile();
+    if (profile?.hash) {
+      setUserHash(profile.hash);
+      loadBalance(profile.hash);
+    }
+  };
+
+  const loadBalance = async (hash: string) => {
+    const currentBalance = await getBalance(hash);
     setBalance(currentBalance);
   };
 
@@ -47,6 +59,11 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
     if (!paymentAmount || paymentAmount <= 0) {
       Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    if (!userHash) {
+      Alert.alert('Error', 'User not authenticated');
       return;
     }
 
@@ -64,16 +81,14 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
     try {
       if (type === 'deposit') {
-        // Check if card details are complete
         if (!cardComplete) {
           Alert.alert('Error', 'Please complete your card details');
+          setLoading(false);
           return;
         }
 
-        // Create payment intent from backend
-        const clientSecret = await createPaymentIntent(paymentAmount * 100); // Convert to cents
-        
-        // Use Stripe's confirmPayment with the card field
+        const clientSecret = await createPaymentIntent(paymentAmount * 100);
+
         const { error, paymentIntent } = await stripeConfirmPayment(clientSecret, {
           paymentMethodType: 'Card',
         });
@@ -83,9 +98,13 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
         }
 
         if (paymentIntent?.status === 'Succeeded') {
-          // Payment succeeded - the webhook will update the backend balance
-          // Just update local storage for immediate UI feedback
-          await updateUserBalance(paymentAmount);
+          // Payment succeeded - update Supabase balance
+          const result = await deposit(userHash, paymentAmount);
+
+          if (!result.ok) {
+            throw new Error('Failed to update balance');
+          }
+
           await addTransaction({
             type: 'deposit',
             amount: paymentAmount,
@@ -95,11 +114,16 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
           Alert.alert('Success', `$${paymentAmount.toFixed(2)} deposited successfully!`);
           setAmount('');
           setCardComplete(false);
-          loadBalance();
+          loadBalance(userHash);
         }
       } else {
         // Handle withdrawal
-        await requestWithdrawal(paymentAmount);
+        const result = await withdraw(userHash, paymentAmount);
+
+        if (!result.ok) {
+          throw new Error(result.error?.message || 'Withdrawal failed');
+        }
+
         await addTransaction({
           type: 'withdrawal',
           amount: -paymentAmount,
@@ -108,7 +132,7 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
         Alert.alert('Success', `$${paymentAmount.toFixed(2)} withdrawal requested. Funds will be available in 1-3 business days.`);
         setAmount('');
-        loadBalance();
+        loadBalance(userHash);
       }
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Payment failed');
