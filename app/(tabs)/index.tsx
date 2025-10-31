@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import LoginModal from '@/components/modals/LoginModal';
 
 // Activity Feed Item Component
 const ActivityItem = ({ activity }: { activity: any }) => (
@@ -98,6 +99,7 @@ export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
   
   const [refreshing, setRefreshing] = useState(false);
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
 
   const handleJoinGame = async (gameId: string) => {
     if (!user) {
@@ -143,7 +145,7 @@ export default function HomeScreen() {
               </Text>
               <TouchableOpacity 
                 style={styles.loginPromptButton}
-                onPress={() => router.push('/auth')}
+                onPress={() => setLoginModalVisible(true)}
               >
                 <Text style={styles.loginPromptButtonText}>LOG IN / SIGN UP</Text>
               </TouchableOpacity>
@@ -160,6 +162,11 @@ export default function HomeScreen() {
           </ScrollView>
         )}
       </SafeAreaView>
+      
+      <LoginModal 
+        visible={loginModalVisible} 
+        onClose={() => setLoginModalVisible(false)} 
+      />
     </ImageBackground>
   );
 }

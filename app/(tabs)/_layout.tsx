@@ -8,6 +8,7 @@ import PaymentModal from '@/components/modals/PaymentModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import { Image } from 'react-native';
+import LoginModal from '@/components/modals/LoginModal';
 import { router } from 'expo-router';
 
 
@@ -25,6 +26,7 @@ export function HeaderRight() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [balance, setBalance] = useState(0);
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
 
   // Load balance when component mounts and when payment modal closes
   useEffect(() => {
@@ -50,11 +52,7 @@ export function HeaderRight() {
   };
 
   const handleProfilePress = () => {
-    if (!user) {
-      router.push('/auth');
-    } else {
-      router.push('/profile');
-    }
+    router.push('/profile');
   };
 
   const handleConnectCrypto = () => {
@@ -88,7 +86,7 @@ export function HeaderRight() {
 
       <TouchableOpacity
         style={styles.cryptoButton}
-        onPress={() => setModalVisible(true)}
+        onPress={() => user ? setModalVisible(true) : setLoginModalVisible(true)}
       >
         <Text style={styles.cryptoButtonText}>
           {user ? 'Connect' : 'Login'}
@@ -143,6 +141,11 @@ export function HeaderRight() {
         visible={paymentModalVisible}
         onClose={handlePaymentModalClose}
         type="deposit"
+      />
+      
+      <LoginModal 
+        visible={loginModalVisible} 
+        onClose={() => setLoginModalVisible(false)} 
       />
     </View>
   );

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { router } from 'expo-router';
+import LoginModal from '@/components/modals/LoginModal';
 
 interface VerificationEntry {
   id: string;
@@ -16,6 +16,7 @@ interface VerificationEntry {
 export default function BetsScreen() {
   const [timeElapsed, setTimeElapsed] = useState('2h 34m');
   const { user, loading: authLoading } = useAuth();
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
 
   // Pool competitors
   const competitors = [
@@ -45,12 +46,12 @@ export default function BetsScreen() {
         <Text style={styles.guestSubtitle}>
           Please login to view your bets
         </Text>
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={() => router.push('/auth')}
-        >
-          <Text style={styles.loginButtonText}>LOGIN</Text>
-        </TouchableOpacity>
+         <TouchableOpacity
+           style={styles.loginButton}
+           onPress={() => setLoginModalVisible(true)}
+         >
+           <Text style={styles.loginButtonText}>LOGIN</Text>
+         </TouchableOpacity>
       </View>
       ) : (
       <SafeAreaView style={{ flex: 1 }}>
@@ -144,6 +145,11 @@ export default function BetsScreen() {
         </View>
       </SafeAreaView>
       )}
+      
+      <LoginModal 
+        visible={loginModalVisible} 
+        onClose={() => setLoginModalVisible(false)} 
+      />
     </ImageBackground>
   );
 }

@@ -14,11 +14,13 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
+import LoginModal from '@/components/modals/LoginModal';
 
 export default function ProfileScreen() {
   const { user, signOut, loading, getUserProfile } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
+  const [loginModalVisible, setLoginModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -57,26 +59,33 @@ export default function ProfileScreen() {
 
   if (!user) {
     return (
-      <ImageBackground
-        source={require('../../assets/images/AppBackground.jpg')}
-        style={styles.background}
-        imageStyle={{ resizeMode: "cover" }}
-      >
-        <SafeAreaView style={styles.container}>
-          <View style={styles.guestContainer}>
-            <Text style={styles.guestTitle}>Profile</Text>
-            <Text style={styles.guestSubtitle}>
-              Please login to view your profile
-            </Text>
-            <TouchableOpacity
-              style={styles.loginButton}
-              onPress={() => router.push('/auth')}
-            >
-              <Text style={styles.loginButtonText}>LOGIN</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </ImageBackground>
+      <>
+        <ImageBackground
+          source={require('../../assets/images/AppBackground.jpg')}
+          style={styles.background}
+          imageStyle={{ resizeMode: "cover" }}
+        >
+          <SafeAreaView style={styles.container}>
+            <View style={styles.guestContainer}>
+              <Text style={styles.guestTitle}>Profile</Text>
+              <Text style={styles.guestSubtitle}>
+                Please login to view your profile
+              </Text>
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={() => setLoginModalVisible(true)}
+              >
+                <Text style={styles.loginButtonText}>LOGIN</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </ImageBackground>
+        
+        <LoginModal 
+          visible={loginModalVisible} 
+          onClose={() => setLoginModalVisible(false)} 
+        />
+      </>
     );
   }
 
@@ -90,29 +99,30 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ImageBackground
-      source={require('../../assets/images/AppBackground.jpg')}
-      style={styles.background}
-      imageStyle={{ resizeMode: "cover" }}
-    >
-      <SafeAreaView style={styles.container}>
-        <ScrollView style={styles.scrollView}>
-          <View style={styles.content}>
-            {/* Profile Header */}
-            <View style={styles.profileHeader}>
-              <View style={styles.avatar}>
-                {userProfile?.hash ? (
-                  <UserAvatar hash={userProfile.hash} size={72} />
-                ) : (
-                  <Text style={styles.avatarText}>...</Text>
-                )}
-              </View>
-              <Text style={styles.name}>
-                {userProfile?.username || 'Loading...'}
-              </Text>
-              <Text style={styles.username}>@{userProfile?.username || 'user'}</Text>
+    <>
+      <ImageBackground
+        source={require('../../assets/images/AppBackground.jpg')}
+        style={styles.background}
+        imageStyle={{ resizeMode: "cover" }}
+      >
+        <SafeAreaView style={styles.container}>
+          <ScrollView style={styles.scrollView}>
+            <View style={styles.content}>
+              {/* Profile Header */}
+              <View style={styles.profileHeader}>
+                <View style={styles.avatar}>
+                  {userProfile?.hash ? (
+                    <UserAvatar hash={userProfile.hash} size={72} />
+                  ) : (
+                    <Text style={styles.avatarText}>...</Text>
+                  )}
+                </View>
+                <Text style={styles.name}>
+                  {userProfile?.username || 'Loading...'}
+                </Text>
+                <Text style={styles.username}>@{userProfile?.username || 'user'}</Text>
 
-            </View>
+              </View>
 
             {/* Stats Cards */}
             <View style={styles.statsContainer}>
@@ -195,7 +205,13 @@ export default function ProfileScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
-    </ImageBackground>
+      </ImageBackground>
+      
+      <LoginModal 
+        visible={loginModalVisible} 
+        onClose={() => setLoginModalVisible(false)} 
+      />
+    </>
   );
 }
 
