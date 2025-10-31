@@ -14,6 +14,8 @@ import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginModal from '@/components/modals/LoginModal';
+import HomeFeed from '@/components/comps/homescreen';
+
 
 // Activity Feed Item Component
 const ActivityItem = ({ activity }: { activity: any }) => (
@@ -79,21 +81,6 @@ const CurrentGameCard = ({ game }: { game: any }) => (
   </View>
 );
 
-// Guest Welcome Component
-const GuestWelcome = () => (
-  <View style={styles.guestWelcome}>
-    <Text style={styles.guestTitle}>Welcome to Snooze! 🎯</Text>
-    <Text style={styles.guestSubtitle}>
-      Bet on your discipline goals and win money when you achieve them!
-    </Text>
-    <TouchableOpacity
-      style={styles.guestButton}
-      onPress={() => router.push('/auth')}
-    >
-      <Text style={styles.guestButtonText}>GET STARTED</Text>
-    </TouchableOpacity>
-  </View>
-);
 
 export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
@@ -158,7 +145,8 @@ export default function HomeScreen() {
               <RefreshControl refreshing={refreshing}  />
             }
           >
-           
+            
+            <HomeFeed />
           </ScrollView>
         )}
       </SafeAreaView>
