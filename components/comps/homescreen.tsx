@@ -6,6 +6,8 @@ import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStats, addSleep, addProfit } from '@/lib/homepage_utils';
 import { getActivityFeed, subscribeToActivityFeed } from '@/lib/activity_log_utils';
+import { getUserActiveGame } from '@/lib/game_utils';
+import { router } from 'expo-router';
 
 const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
   const width = 180;
@@ -84,10 +86,12 @@ export default function HomeScreen() {
   const [profitData, setProfitData] = useState([0]);
   const [userHash, setUserHash] = useState<string | null>(null);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [hasActiveGame, setHasActiveGame] = useState(false);
 
   useEffect(() => {
     loadUserData();
     loadFeed();
+    checkActiveGame();
 
     // Subscribe to real-time updates
     const unsubscribe = subscribeToActivityFeed((newLog) => {
@@ -116,6 +120,16 @@ export default function HomeScreen() {
       setProfitMade(stats.profitMade);
       setSleepData(stats.sleepHistory.length > 0 ? stats.sleepHistory : [0]);
       setProfitData(stats.profitHistory.length > 0 ? stats.profitHistory : [0]);
+    }
+  };
+
+  const checkActiveGame = async () => {
+    const profile = await getUserProfile();
+    if (profile?.hash) {
+      console.log('=== Checking for active game ===');
+      const activeGame = await getUserActiveGame(profile.hash);
+      console.log('Active game:', activeGame ? activeGame.id : 'none');
+      setHasActiveGame(!!activeGame);
     }
   };
 
@@ -265,20 +279,24 @@ export default function HomeScreen() {
             </View>
           </View>
           
-          {/* Action Buttons */}
-          <TouchableOpacity 
-            style={styles.buttonPrimary}
-            onPress={() => {}}
-          >
-            <Text style={styles.buttonPrimaryText}>CREATE NEW GAME</Text>
-          </TouchableOpacity>
+          {/* Action Buttons - Only show if user doesn't have an active game */}
+          {!hasActiveGame && (
+            <>
+              <TouchableOpacity
+                style={styles.buttonPrimary}
+                onPress={() => router.push('/bets')}
+              >
+                <Text style={styles.buttonPrimaryText}>CREATE NEW GAME</Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.buttonSecondary}
-            onPress={() => {}}
-          >
-            <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.buttonSecondary}
+                onPress={() => router.push('/bets')}
+              >
+                <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
+              </TouchableOpacity>
+            </>
+          )}
           
         </View>
       </ScrollView>

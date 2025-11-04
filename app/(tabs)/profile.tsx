@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
-  StyleSheet, 
-  ImageBackground, 
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ImageBackground,
   Dimensions,
   Alert,
   ActivityIndicator
 } from 'react-native';
-import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import LoginModal from '@/components/modals/LoginModal';
+import { getStats } from '@/lib/homepage_utils';
+import { getBalance } from '@/lib/transaction_utils';
+import { getUserGames } from '@/lib/game_utils';
 
 export default function ProfileScreen() {
   const { user, signOut, loading, getUserProfile } = useAuth();
@@ -22,16 +24,46 @@ export default function ProfileScreen() {
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
 
+  // User metrics
+  const [balance, setBalance] = useState(0);
+  const [totalProfit, setTotalProfit] = useState(0);
+  const [sleepLogged, setSleepLogged] = useState(0);
+  const [gamesPlayed, setGamesPlayed] = useState(0);
+
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user) {
         const profile = await getUserProfile();
         setUserProfile(profile);
+        if (profile?.hash) {
+          await loadUserMetrics(profile.hash);
+        }
       }
     };
 
     fetchUserProfile();
-  }, [user, getUserProfile]);
+  }, [user]);
+
+  const loadUserMetrics = async (userHash: string) => {
+    console.log('=== Loading user metrics ===');
+    console.log('User hash:', userHash);
+
+    // Load balance
+    const userBalance = await getBalance(userHash);
+    console.log('Balance:', userBalance);
+    setBalance(userBalance);
+
+    // Load stats from homepage
+    const stats = await getStats(userHash);
+    console.log('Stats:', stats);
+    setTotalProfit(stats.profitMade);
+    setSleepLogged(stats.sleepLogged);
+
+    // Load games count
+    const games = await getUserGames(userHash);
+    console.log('Games played:', games.length);
+    setGamesPlayed(games.length);
+  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -50,11 +82,6 @@ export default function ProfileScreen() {
         }
       ]
     );
-  };
-
-
-  const getWinRate = () => {
-    return 0;
   };
 
   if (!user) {
@@ -80,10 +107,10 @@ export default function ProfileScreen() {
             </View>
           </SafeAreaView>
         </ImageBackground>
-        
-        <LoginModal 
-          visible={loginModalVisible} 
-          onClose={() => setLoginModalVisible(false)} 
+
+        <LoginModal
+          visible={loginModalVisible}
+          onClose={() => setLoginModalVisible(false)}
         />
       </>
     );
@@ -91,10 +118,16 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#000" />
-        <Text style={styles.loadingText}>Loading profile...</Text>
-      </View>
+      <ImageBackground
+        source={require('../../assets/images/AppBackground.jpg')}
+        style={styles.background}
+        imageStyle={{ resizeMode: "cover" }}
+      >
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#000" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </ImageBackground>
     );
   }
 
@@ -106,110 +139,84 @@ export default function ProfileScreen() {
         imageStyle={{ resizeMode: "cover" }}
       >
         <SafeAreaView style={styles.container}>
-          <ScrollView style={styles.scrollView}>
-            <View style={styles.content}>
-              {/* Profile Header */}
-              <View style={styles.profileHeader}>
-                <View style={styles.avatar}>
-                  {userProfile?.hash ? (
-                    <UserAvatar hash={userProfile.hash} size={72} />
-                  ) : (
-                    <Text style={styles.avatarText}>...</Text>
-                  )}
-                </View>
-                <Text style={styles.name}>
-                  {userProfile?.username || 'Loading...'}
-                </Text>
-                <Text style={styles.username}>@{userProfile?.username || 'user'}</Text>
+          <View style={[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
+            <ScrollView style={styles.scrollContent}>
+              <View style={styles.content}>
 
-              </View>
-
-            {/* Stats Cards */}
-            <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>s</Text>
-                <Text style={styles.statLabel}>Games Played</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>s</Text>
-                <Text style={styles.statLabel}>Games Won</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>{getWinRate()}%</Text>
-                <Text style={styles.statLabel}>Win Rate</Text>
-              </View>
-            </View>
-
-            {/* Earnings Card */}
-            <View style={styles.arcadeCard}>
-              <View style={styles.cardInner}>
-                <Text style={styles.cardTitle}>💰 TOTAL EARNINGS</Text>
-                <View style={styles.spacer} />
-                <Text style={styles.earningsAmount}>
-                  sh
-                </Text>
-              </View>
-            </View>
-
-            {/* Streak Card */}
-            <View style={styles.arcadeCard}>
-              <View style={styles.cardInner}>
-                <Text style={styles.cardTitle}>🔥 STREAKS</Text>
-                <View style={styles.spacer} />
-                <View style={styles.streakContainer}>
-                  <View style={styles.streakItem}>
-                    <Text style={styles.streakNumber}>ama</Text>
-                    <Text style={styles.streakLabel}>Current</Text>
+                {/* Profile Header */}
+                <View style={styles.profileHeader}>
+                  <View style={styles.avatar}>
+                    {userProfile?.hash ? (
+                      <UserAvatar hash={userProfile.hash} size={80} />
+                    ) : (
+                      <Text style={styles.avatarText}>...</Text>
+                    )}
                   </View>
-                  <View style={styles.streakItem}>
-                    <Text style={styles.streakNumber}>drank</Text>
-                    <Text style={styles.streakLabel}>Best</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {/* Recent Games */}
-            <View style={styles.arcadeCard}>
-              <View style={styles.cardInner}>
-                <Text style={styles.cardTitle}>📊 RECENT GAMES</Text>
-                <View style={styles.spacer} />
-                
-              </View>
-            </View>
-
-            {/* Account Actions */}
-            <View style={styles.actionsContainer}>
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>Edit Profile</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.actionButton}>
-                <Text style={styles.actionButtonText}>Settings</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.signOutButton]}
-                onPress={handleSignOut}
-                disabled={signingOut}
-              >
-                {signingOut ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <Text style={[styles.actionButtonText, styles.signOutButtonText]}>
-                    Sign Out
+                  <Text style={styles.name}>
+                    {userProfile?.username || 'Loading...'}
                   </Text>
-                )}
-              </TouchableOpacity>
-            </View>
+                  <Text style={styles.email}>{userProfile?.email || ''}</Text>
+                </View>
+
+                {/* Metrics Cards */}
+                <View style={styles.metricsContainer}>
+
+                  {/* Balance Card */}
+                  <View style={styles.metricCard}>
+                    <View style={styles.cardInner}>
+                      <Text style={styles.metricLabel}>BALANCE</Text>
+                      <Text style={styles.metricValue}>${balance.toFixed(2)}</Text>
+                    </View>
+                  </View>
+
+                  {/* Total Profit Card */}
+                  <View style={styles.metricCard}>
+                    <View style={styles.cardInner}>
+                      <Text style={styles.metricLabel}>TOTAL PROFIT</Text>
+                      <Text style={styles.metricValue}>${totalProfit.toFixed(2)}</Text>
+                    </View>
+                  </View>
+
+                  {/* Sleep Logged Card */}
+                  <View style={styles.metricCard}>
+                    <View style={styles.cardInner}>
+                      <Text style={styles.metricLabel}>SLEEP LOGGED</Text>
+                      <Text style={styles.metricValue}>{sleepLogged}h</Text>
+                    </View>
+                  </View>
+
+                  {/* Games Played Card */}
+                  <View style={styles.metricCard}>
+                    <View style={styles.cardInner}>
+                      <Text style={styles.metricLabel}>GAMES PLAYED</Text>
+                      <Text style={styles.metricValue}>{gamesPlayed}</Text>
+                    </View>
+                  </View>
+
+                </View>
+
+                {/* Sign Out Button */}
+                <TouchableOpacity
+                  style={styles.signOutButton}
+                  onPress={handleSignOut}
+                  disabled={signingOut}
+                >
+                  {signingOut ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.signOutButtonText}>SIGN OUT</Text>
+                  )}
+                </TouchableOpacity>
+
+              </View>
+            </ScrollView>
           </View>
-        </ScrollView>
-      </SafeAreaView>
+        </SafeAreaView>
       </ImageBackground>
-      
-      <LoginModal 
-        visible={loginModalVisible} 
-        onClose={() => setLoginModalVisible(false)} 
+
+      <LoginModal
+        visible={loginModalVisible}
+        onClose={() => setLoginModalVisible(false)}
       />
     </>
   );
@@ -218,22 +225,28 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
+  scrollWrapper: {
+    overflow: 'hidden'
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: 10,
+    paddingTop: 100,
+    overflow: 'hidden',
   },
   content: {
-    padding: 16,
-    paddingTop: 100, // Account for header
+    padding: 20,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fdcff3',
   },
   loadingText: {
     marginTop: 16,
@@ -288,9 +301,9 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#FFFFFF',
     borderWidth: 4,
     borderColor: '#000000',
@@ -298,10 +311,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
     shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
+    shadowOffset: { width: 6, height: 6 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 4,
+    elevation: 6,
+    overflow: 'hidden',
   },
   avatarText: {
     color: '#000000',
@@ -309,186 +323,66 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
   },
   name: {
-    fontSize: 24,
+    fontSize: 28,
     fontFamily: 'Inter_800ExtraBold',
     color: '#000000',
     marginBottom: 4,
   },
-  username: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666666',
-    marginBottom: 8,
-  },
-  bio: {
+  email: {
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
     color: '#666666',
-    textAlign: 'center',
-    lineHeight: 20,
   },
 
-  // Stats
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  // Metrics
+  metricsContainer: {
     marginBottom: 24,
   },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 3,
-    borderColor: '#000000',
-    padding: 16,
-    alignItems: 'center',
-    marginHorizontal: 4,
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontFamily: 'Inter_800ExtraBold',
-    color: '#000000',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666666',
-    textAlign: 'center',
-  },
-
-  // Arcade Cards
-  arcadeCard: {
+  metricCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 4,
     borderColor: '#000000',
-    borderRadius: 0,
     marginBottom: 16,
     shadowColor: '#000000',
-    shadowOffset: { width: 8, height: 8 },
+    shadowOffset: { width: 6, height: 6 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 8,
+    elevation: 6,
   },
   cardInner: {
     padding: 20,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_800ExtraBold',
-    color: '#000000',
-    marginBottom: 16,
+  metricLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#666666',
+    letterSpacing: 1,
+    marginBottom: 8,
   },
-  spacer: {
-    height: 8,
-  },
-  earningsAmount: {
+  metricValue: {
     fontSize: 32,
     fontFamily: 'Inter_800ExtraBold',
-    color: '#4CAF50',
-    textAlign: 'center',
-  },
-
-  // Streaks
-  streakContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  streakItem: {
-    alignItems: 'center',
-  },
-  streakNumber: {
-    fontSize: 28,
-    fontFamily: 'Inter_800ExtraBold',
-    color: '#FF6B35',
-    marginBottom: 4,
-  },
-  streakLabel: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666666',
-  },
-
-  // Games
-  gameItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  gameInfo: {
-    flex: 1,
-  },
-  gameTitle: {
-    fontSize: 14,
-    fontFamily: 'Inter_700Bold',
     color: '#000000',
-    marginBottom: 4,
-  },
-  gameDate: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666666',
-  },
-  gameResult: {
-    alignItems: 'flex-end',
-  },
-  gameStatus: {
-    fontSize: 12,
-    fontFamily: 'Inter_800ExtraBold',
-    color: '#666666',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 4,
-  },
-  gameStatusWin: {
-    color: '#4CAF50',
-    backgroundColor: '#E8F5E8',
-  },
-  emptyText: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666666',
-    textAlign: 'center',
-    padding: 24,
   },
 
   // Actions
-  actionsContainer: {
-    marginTop: 24,
-    marginBottom: 32,
-  },
-  actionButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 3,
+  signOutButton: {
+    backgroundColor: '#000000',
+    borderWidth: 4,
     borderColor: '#000000',
-    paddingVertical: 16,
-    marginBottom: 12,
+    paddingVertical: 18,
+    marginTop: 16,
+    alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 4,
   },
-  actionButtonText: {
-    color: '#000000',
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  signOutButton: {
-    backgroundColor: '#FF4444',
-    borderColor: '#FF4444',
-  },
   signOutButtonText: {
     color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 1,
   },
 });

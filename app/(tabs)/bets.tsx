@@ -1,38 +1,344 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert, Modal, TextInput } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginModal from '@/components/modals/LoginModal';
+import { UserAvatar } from '@/components/Avatar';
+import {
+  getJoinableGames,
+  getUserActiveGame,
+  createGame,
+  joinGame,
+  getGameDetails,
+  Game,
+  GameWithPlayers,
+} from '@/lib/game_utils';
 
-interface VerificationEntry {
-  id: string;
-  userHash: string;
-  timestamp: string;
-  action: string;
-  status: 'pending' | 'verified' | 'challenged';
-}
+type TabType = 'players' | 'log';
 
 export default function BetsScreen() {
-  const [timeElapsed, setTimeElapsed] = useState('2h 34m');
-  const { user, loading: authLoading } = useAuth();
+  const { user, getUserProfile } = useAuth();
   const [loginModalVisible, setLoginModalVisible] = useState(false);
+  const [userHash, setUserHash] = useState<string | null>(null);
 
-  // Pool competitors
-  const competitors = [
-    '0x742d35Cc6634C0532925a3b8',
-    '0x89Ab23Ef5678C0532925a3b9',
-    '0x456f78Cd9012C0532925a3c0',
-    '0x123e45Bc6789C0532925a3d1',
-  ];
-  
-  // Mock verification log data
-  const verificationLog: VerificationEntry[] = [
-    { id: '1', userHash: '0x742d35Cc6634C0532925a3b8', timestamp: '6:32 AM', action: 'Submitted wake-up proof', status: 'pending' },
-    { id: '2', userHash: '0x89Ab23Ef5678C0532925a3b9', timestamp: '6:45 AM', action: 'Submitted wake-up proof', status: 'verified' },
-    { id: '3', userHash: '0x456f78Cd9012C0532925a3c0', timestamp: '7:01 AM', action: 'Submitted wake-up proof', status: 'pending' },
-    { id: '4', userHash: '0x123e45Bc6789C0532925a3d1', timestamp: '6:28 AM', action: 'Submitted wake-up proof', status: 'verified' },
-  ];
+  // Game data
+  const [activeGame, setActiveGame] = useState<GameWithPlayers | null>(null);
+  const [joinableGames, setJoinableGames] = useState<Game[]>([]);
+
+  // Create game modal
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [newGameWakeTime, setNewGameWakeTime] = useState('07:00');
+  const [newGameStake, setNewGameStake] = useState('10');
+
+  // Tab selection for active game view
+  const [selectedTab, setSelectedTab] = useState<TabType>('players');
+
+  // Track if user has submitted proof today
+  const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
+
+  useEffect(() => {
+    loadUserHash();
+  }, [user]);
+
+  useEffect(() => {
+    if (userHash) {
+      loadGames();
+    }
+  }, [userHash]);
+
+  const loadUserHash = async () => {
+    console.log('=== loadUserHash ===');
+    const profile = await getUserProfile();
+    console.log('Profile:', profile);
+    if (profile?.hash) {
+      setUserHash(profile.hash);
+      console.log('User hash set:', profile.hash);
+    }
+  };
+
+  const loadGames = async () => {
+    console.log('=== loadGames ===');
+    console.log('Loading games for user:', userHash);
+
+    if (!userHash) return;
+
+    // Check for active game first
+    const activeGameData = await getUserActiveGame(userHash);
+    console.log('Active game check:', activeGameData ? activeGameData.id : 'none');
+
+    if (activeGameData) {
+      // User has an active game - load full details
+      const gameDetails = await getGameDetails(activeGameData.id);
+      console.log('Active game details loaded:', {
+        id: gameDetails?.id,
+        playerCount: gameDetails?.players.length,
+        logsCount: gameDetails?.logs.length,
+      });
+      setActiveGame(gameDetails);
+      setJoinableGames([]); // Clear joinable games
+    } else {
+      // No active game - load joinable games
+      const joinable = await getJoinableGames();
+      console.log('Joinable games loaded:', joinable.length);
+      setJoinableGames(joinable);
+      setActiveGame(null);
+    }
+  };
+
+  const handleCreateGame = async () => {
+    console.log('=== handleCreateGame ===');
+    console.log('Wake time:', newGameWakeTime);
+    console.log('Stake:', newGameStake);
+
+    if (!newGameWakeTime || !newGameStake) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const stake = parseFloat(newGameStake);
+    if (isNaN(stake) || stake <= 0) {
+      Alert.alert('Error', 'Please enter a valid stake amount');
+      return;
+    }
+
+    console.log('Creating game...');
+    const result = await createGame(newGameWakeTime + ':00', stake);
+
+    if (result.ok && result.game) {
+      console.log('Game created successfully:', result.game.id);
+      Alert.alert('Success', 'Game created! You can now join it.');
+      setCreateModalVisible(false);
+      setNewGameWakeTime('07:00');
+      setNewGameStake('10');
+      loadGames();
+    } else {
+      console.error('Failed to create game:', result.error);
+      Alert.alert('Error', `Failed to create game: ${result.error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleJoinGame = async (gameId: string) => {
+    console.log('=== handleJoinGame ===');
+    console.log('Game ID:', gameId);
+    console.log('User hash:', userHash);
+
+    if (!userHash) {
+      console.error('No user hash!');
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    console.log('Joining game...');
+    const result = await joinGame(gameId, userHash);
+
+    if (result.ok) {
+      console.log('Successfully joined game:', gameId);
+      Alert.alert('Success', 'Successfully joined the game!');
+      loadGames();
+    } else {
+      console.error('Failed to join game:', result.error);
+      Alert.alert('Error', `Failed to join game: ${result.error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const formatTime = (time24: string) => {
+    const [hours, minutes] = time24.split(':');
+    const h = parseInt(hours);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${minutes} ${ampm}`;
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
+  };
+
+  const renderActiveGameView = () => {
+    if (!activeGame) return null;
+
+    return (
+      <>
+        {/* Game Header */}
+        <View style={styles.arcadeCard}>
+          <View style={styles.cardInner}>
+            <Text style={styles.cardTitle}>MY CURRENT GAME</Text>
+            <View style={styles.spacer} />
+
+            <View style={styles.gameStatsRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>WAKE TIME</Text>
+                <Text style={styles.statValue}>{formatTime(activeGame.wake_up_time)}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>STAKE</Text>
+                <Text style={styles.statValue}>${activeGame.stake}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>POOL</Text>
+                <Text style={styles.statValue}>${activeGame.stake * activeGame.player_count}</Text>
+              </View>
+            </View>
+
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>
+                {activeGame.status === 'active' ? 'GAME ACTIVE' : 'WAITING FOR PLAYERS'}
+              </Text>
+              <Text style={styles.playerCount}>
+                {activeGame.players.length}/8 Players
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Tab Selector */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === 'players' && styles.tabActive]}
+            onPress={() => setSelectedTab('players')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'players' && styles.tabTextActive]}>
+              PLAYERS
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === 'log' && styles.tabActive]}
+            onPress={() => setSelectedTab('log')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'log' && styles.tabTextActive]}>
+              LOG
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Tab Content */}
+        <View style={styles.arcadeCard}>
+          <View style={styles.cardInner}>
+            {selectedTab === 'players' && (
+              <>
+                <Text style={styles.cardTitle}>PLAYERS ({activeGame.players.length}/8)</Text>
+                <View style={styles.spacer} />
+                {activeGame.players.map((player, index) => (
+                  <View key={player.id} style={styles.playerItem}>
+                    <UserAvatar hash={player.user_hash} size={40} />
+                    <View style={styles.playerInfo}>
+                      <Text style={styles.playerHash}>
+                        {player.user_hash.substring(0, 12)}...
+                      </Text>
+                      <Text style={styles.playerWakeups}>
+                        {player.total_wakeups} wakeups
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {selectedTab === 'log' && (
+              <>
+                <Text style={styles.cardTitle}>ACTIVITY LOG</Text>
+                <View style={styles.spacer} />
+                {activeGame.logs.length === 0 ? (
+                  <Text style={styles.emptyText}>No activity yet</Text>
+                ) : (
+                  activeGame.logs.map((log) => (
+                    <View key={log.id} style={styles.logItem}>
+                      <View style={styles.logHeader}>
+                        <Text style={styles.logType}>
+                          {log.event_type.toUpperCase()}
+                        </Text>
+                        <Text style={styles.logTime}>
+                          {formatDate(log.created_at)}
+                        </Text>
+                      </View>
+                      <Text style={styles.logMessage}>{log.message}</Text>
+                    </View>
+                  ))
+                )}
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Submit Proof Button */}
+        <TouchableOpacity
+          style={[
+            styles.submitProofButton,
+            hasSubmittedToday && styles.submitProofButtonDisabled
+          ]}
+          onPress={() => {
+            if (!hasSubmittedToday) {
+              Alert.alert('Submit Proof', 'Photo submission coming soon!');
+            }
+          }}
+          disabled={hasSubmittedToday}
+        >
+          <Text style={styles.submitProofButtonText}>
+            {hasSubmittedToday ? 'PROOF SUBMITTED TODAY ✓' : 'SUBMIT WAKEUP PROOF'}
+          </Text>
+        </TouchableOpacity>
+      </>
+    );
+  };
+
+  const renderJoinableGamesView = () => {
+    return (
+      <>
+        {/* Joinable Games */}
+        <View style={styles.arcadeCard}>
+          <View style={styles.cardInner}>
+            <Text style={styles.cardTitle}>JOINABLE GAMES</Text>
+            <View style={styles.spacer} />
+
+            {joinableGames.length === 0 ? (
+              <Text style={styles.emptyText}>No games available. Create one!</Text>
+            ) : (
+              joinableGames.map((game) => (
+                <View key={game.id} style={styles.gameItem}>
+                  <View style={styles.gameHeader}>
+                    <Text style={styles.gameWakeTime}>
+                      Wake: {formatTime(game.wake_up_time)}
+                    </Text>
+                    <Text style={styles.gameStake}>${game.stake}</Text>
+                  </View>
+                  <View style={styles.gameInfo}>
+                    <Text style={styles.gamePlayers}>
+                      {game.player_count}/8 Players
+                    </Text>
+                    <Text style={styles.gameCreated}>
+                      {formatDate(game.created_at)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.joinButton}
+                    onPress={() => handleJoinGame(game.id)}
+                  >
+                    <Text style={styles.joinButtonText}>JOIN GAME →</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+
+        {/* Create Game Button */}
+        <TouchableOpacity
+          style={styles.createButton}
+          onPress={() => setCreateModalVisible(true)}
+        >
+          <Text style={styles.createButtonText}>+ CREATE NEW GAME</Text>
+        </TouchableOpacity>
+      </>
+    );
+  };
 
   return (
     <ImageBackground
@@ -42,114 +348,82 @@ export default function BetsScreen() {
     >
       {!user ? (
         <View style={styles.guestContainer}>
-        <Text style={styles.guestTitle}>Bets</Text>
-        <Text style={styles.guestSubtitle}>
-          Please login to view your bets
-        </Text>
-         <TouchableOpacity
-           style={styles.loginButton}
-           onPress={() => setLoginModalVisible(true)}
-         >
-           <Text style={styles.loginButtonText}>LOGIN</Text>
-         </TouchableOpacity>
-      </View>
-      ) : (
-      <SafeAreaView style={{ flex: 1 }}>
-        <View style = {[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
-          <ScrollView style={styles.scrollContent}>
-            <View style={styles.content}>
-
-          {/* Game Stats */}
-          <View style={styles.arcadeCard}>
-            <View style={styles.cardInner}>
-              <Text style={styles.cardTitle}>MY GAME STATS</Text>
-              <View style={styles.spacer} />
-              
-              {/* Stats Row */}
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>TIME ELAPSED</Text>
-                  <Text style={styles.statNumber}>{timeElapsed}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>WAKE TIME</Text>
-                  <Text style={styles.statNumber}>6:30 AM</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>STAKE</Text>
-                  <Text style={styles.statNumber}>$5.00</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>POOL</Text>
-                  <Text style={styles.statNumber}>$20.00</Text>
-                </View>
-              </View>
-              
-              <View style={styles.dividerHeavy} />
-              
-              {/* Competitors List */}
-              <Text style={styles.sectionLabel}>POOL COMPETITORS</Text>
-              <View style={styles.spacer} />
-              
-              {competitors.map((hash, index) => (
-                <View key={index} style={styles.competitorItem}>
-                  <Text style={styles.competitorHash}>{hash}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Verification Log */}
-          <View style={styles.arcadeCard}>
-            <View style={styles.cardInner}>
-              <Text style={styles.cardTitle}>VERIFICATION LOG</Text>
-              <View style={styles.spacer} />
-              
-              {verificationLog.map((entry) => (
-                <View key={entry.id} style={styles.verificationItem}>
-                  <View style={styles.verificationHeader}>
-                    <Text style={styles.verificationUser}>{entry.userHash}</Text>
-                    <Text style={styles.verificationTime}>{entry.timestamp}</Text>
-                  </View>
-                  <Text style={styles.verificationAction}>{entry.action}</Text>
-                  
-                  {entry.status === 'pending' && (
-                    <View style={styles.buttonRow}>
-                      <TouchableOpacity style={styles.verifyButton}>
-                        <Text style={styles.verifyButtonText}>VERIFY</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.challengeButton}>
-                        <Text style={styles.challengeButtonText}>CHALLENGE</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                  
-                  {entry.status === 'verified' && (
-                    <View style={styles.statusBadge}>
-                      <Text style={styles.statusText}>VERIFIED</Text>
-                    </View>
-                  )}
-                  
-                  {entry.status === 'challenged' && (
-                    <View style={[styles.statusBadge, styles.challengedBadge]}>
-                      <Text style={styles.statusText}>CHALLENGED</Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          </View>
-        
-            </View>
-          </ScrollView>
+          <Text style={styles.guestTitle}>Bets</Text>
+          <Text style={styles.guestSubtitle}>
+            Please login to view and join games
+          </Text>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => setLoginModalVisible(true)}
+          >
+            <Text style={styles.loginButtonText}>LOGIN</Text>
+          </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      ) : (
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
+            <ScrollView style={styles.scrollContent}>
+              <View style={styles.content}>
+                {activeGame ? renderActiveGameView() : renderJoinableGamesView()}
+              </View>
+            </ScrollView>
+          </View>
+        </SafeAreaView>
       )}
-      
-      <LoginModal 
-        visible={loginModalVisible} 
-        onClose={() => setLoginModalVisible(false)} 
+
+      {/* Login Modal */}
+      <LoginModal
+        visible={loginModalVisible}
+        onClose={() => setLoginModalVisible(false)}
       />
+
+      {/* Create Game Modal */}
+      <Modal
+        visible={createModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCreateModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>CREATE NEW GAME</Text>
+
+            <Text style={styles.inputLabel}>WAKE UP TIME</Text>
+            <TextInput
+              style={styles.input}
+              value={newGameWakeTime}
+              onChangeText={setNewGameWakeTime}
+              placeholder="07:00"
+              placeholderTextColor="#999"
+            />
+
+            <Text style={styles.inputLabel}>STAKE AMOUNT ($)</Text>
+            <TextInput
+              style={styles.input}
+              value={newGameStake}
+              onChangeText={setNewGameStake}
+              placeholder="10"
+              keyboardType="numeric"
+              placeholderTextColor="#999"
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButtonSecondary}
+                onPress={() => setCreateModalVisible(false)}
+              >
+                <Text style={styles.modalButtonSecondaryText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButtonPrimary}
+                onPress={handleCreateGame}
+              >
+                <Text style={styles.modalButtonPrimaryText}>CREATE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 }
@@ -157,11 +431,11 @@ export default function BetsScreen() {
 const styles = StyleSheet.create({
   background: {
     flex: 1,
-    width: '100%', 
+    width: '100%',
     height: '100%',
   },
-  scrollWrapper: { 
-    overflow: 'hidden' 
+  scrollWrapper: {
+    overflow: 'hidden'
   },
   scrollContent: {
     flexGrow: 1,
@@ -194,7 +468,7 @@ const styles = StyleSheet.create({
   spacer: {
     height: 16,
   },
-  statsRow: {
+  gameStatsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
@@ -209,43 +483,126 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: '#666',
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  statNumber: {
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
+  statValue: {
+    fontSize: 18,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000',
   },
-  dividerHeavy: {
-    height: 3,
-    backgroundColor: '#000',
-    marginVertical: 16,
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 2,
+    borderTopColor: '#E0E0E0',
   },
-  sectionLabel: {
+  statusLabel: {
     fontSize: 12,
     fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
-    color: '#666',
-    textTransform: 'uppercase',
+    color: '#000',
   },
-  competitorItem: {
+  playerCount: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 8,
+  },
+  tab: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderWidth: 3,
+    borderColor: '#000',
+    padding: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  tabActive: {
+    backgroundColor: '#000',
+  },
+  tabText: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+  tabTextActive: {
+    color: '#FFF',
+  },
+  playerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#000',
     backgroundColor: '#FAFAFA',
-    padding: 10,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 2, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 2,
   },
-  competitorHash: {
+  playerInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  playerHash: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+    marginBottom: 2,
+  },
+  playerWakeups: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  logItem: {
+    borderWidth: 2,
+    borderColor: '#000',
+    backgroundColor: '#FAFAFA',
+    padding: 10,
+    marginBottom: 8,
+  },
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  logType: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
+    letterSpacing: 0.5,
+  },
+  logTime: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#999',
+  },
+  logMessage: {
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
-    letterSpacing: 0.3,
   },
-  verificationItem: {
+  emptyText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  gameItem: {
     borderWidth: 3,
     borderColor: '#000',
     backgroundColor: '#FAFAFA',
@@ -256,6 +613,76 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 0,
     elevation: 3,
+  },
+  gameHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  gameWakeTime: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+  },
+  gameStake: {
+    fontSize: 16,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#4CAF50',
+  },
+  gameInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  gamePlayers: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  gameCreated: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#999',
+  },
+  joinButton: {
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: '#000',
+    padding: 10,
+    alignItems: 'center',
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  joinButtonText: {
+    color: '#FFF',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  createButton: {
+    backgroundColor: '#000',
+    borderWidth: 4,
+    borderColor: '#000',
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  createButtonText: {
+    color: '#FFF',
+    textAlign: 'center',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 14,
+    letterSpacing: 1,
   },
   guestContainer: {
     flex: 1,
@@ -295,90 +722,115 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 1,
   },
-  verificationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
   },
-  verificationUser: {
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderWidth: 4,
+    borderColor: '#000',
+    padding: 24,
+    margin: 20,
+    width: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 6,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 0.5,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  inputLabel: {
     fontSize: 11,
     fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
     color: '#666',
-    letterSpacing: 0.3,
-    flex: 1,
+    marginBottom: 8,
+    marginTop: 12,
   },
-  verificationTime: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#999',
-    letterSpacing: 0.3,
-  },
-  verificationAction: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#000',
-    marginBottom: 10,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  verifyButton: {
-    flex: 1,
-    backgroundColor: '#4CAF50',
-    borderWidth: 2,
+  input: {
+    borderWidth: 3,
     borderColor: '#000',
-    padding: 10,
+    backgroundColor: '#FFF',
+    padding: 12,
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    backgroundColor: '#000',
+    borderWidth: 3,
+    borderColor: '#000',
+    padding: 14,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
+    shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 2,
+    elevation: 3,
   },
-  verifyButtonText: {
+  modalButtonPrimaryText: {
     color: '#FFF',
     fontFamily: 'Inter_800ExtraBold',
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 0.5,
   },
-  challengeButton: {
+  modalButtonSecondary: {
     flex: 1,
     backgroundColor: '#FFF',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#000',
-    padding: 10,
+    padding: 14,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
+    shadowOffset: { width: 3, height: 3 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 2,
+    elevation: 3,
   },
-  challengeButtonText: {
+  modalButtonSecondaryText: {
     color: '#000',
     fontFamily: 'Inter_800ExtraBold',
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 0.5,
   },
-  statusBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 2,
+  submitProofButton: {
+    backgroundColor: '#000',
+    borderWidth: 4,
     borderColor: '#000',
-    alignSelf: 'flex-start',
-    marginTop: 4,
+    padding: 18,
+    marginBottom: 16,
+    alignItems: 'center',
+    alignSelf: 'center',
+    width: '55%',
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
-  challengedBadge: {
-    backgroundColor: '#FF5252',
+  submitProofButtonDisabled: {
+    backgroundColor: '#CCC',
+    borderColor: '#999',
   },
-  statusText: {
+  submitProofButtonText: {
     color: '#FFF',
+    textAlign: 'center',
     fontFamily: 'Inter_800ExtraBold',
-    fontSize: 9,
-    letterSpacing: 0.5,
+    fontSize: 14,
+    letterSpacing: 1,
   },
 });
