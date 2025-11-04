@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 
 export interface UserStats {
   sleepLogged: number;
+  sleepAverage: number;
   profitMade: number;
   sleepHistory: number[];
   profitHistory: number[];
@@ -16,13 +17,19 @@ export async function getStats(userHash: string): Promise<UserStats> {
 
   if (error) {
     console.error('failed to get user stats', error);
-    return { sleepLogged: 0, profitMade: 0, sleepHistory: [0], profitHistory: [0] };
+    return { sleepLogged: 0, sleepAverage: 0, profitMade: 0, sleepHistory: [0], profitHistory: [0] };
   }
+
+  const sleepHistory = data?.sleep_history ?? [0];
+  const sleepAverage = sleepHistory.length > 0
+    ? sleepHistory.reduce((sum, val) => sum + val, 0) / sleepHistory.length
+    : 0;
 
   return {
     sleepLogged: data?.sleep_logged ?? 0,
+    sleepAverage: Math.round(sleepAverage * 10) / 10, // Round to 1 decimal place
     profitMade: data?.profit_made ?? 0,
-    sleepHistory: data?.sleep_history ?? [0],
+    sleepHistory: sleepHistory,
     profitHistory: data?.profit_history ?? [0],
   };
 }

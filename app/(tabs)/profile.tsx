@@ -16,7 +16,7 @@ import { UserAvatar } from '@/components/Avatar';
 import LoginModal from '@/components/modals/LoginModal';
 import { getStats } from '@/lib/homepage_utils';
 import { getBalance } from '@/lib/transaction_utils';
-import { getUserGames } from '@/lib/game_utils';
+import { getUserGames, getUserActiveGame, getGameDetails, GameWithPlayers } from '@/lib/game_utils';
 
 export default function ProfileScreen() {
   const { user, signOut, loading, getUserProfile } = useAuth();
@@ -29,6 +29,9 @@ export default function ProfileScreen() {
   const [totalProfit, setTotalProfit] = useState(0);
   const [sleepLogged, setSleepLogged] = useState(0);
   const [gamesPlayed, setGamesPlayed] = useState(0);
+
+  // Active game and logs
+  const [activeGame, setActiveGame] = useState<GameWithPlayers | null>(null);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -57,12 +60,25 @@ export default function ProfileScreen() {
     const stats = await getStats(userHash);
     console.log('Stats:', stats);
     setTotalProfit(stats.profitMade);
-    setSleepLogged(stats.sleepLogged);
+    setSleepLogged(stats.sleepAverage); // Use average instead of total
 
     // Load games count
     const games = await getUserGames(userHash);
     console.log('Games played:', games.length);
     setGamesPlayed(games.length);
+
+    // Load active game and its logs
+    const activeGameData = await getUserActiveGame(userHash);
+    if (activeGameData) {
+      const gameDetails = await getGameDetails(activeGameData.id);
+      console.log('Active game loaded for profile:', {
+        id: gameDetails?.id,
+        logsCount: gameDetails?.logs.length,
+      });
+      setActiveGame(gameDetails);
+    } else {
+      setActiveGame(null);
+    }
   };
 
   const handleSignOut = () => {
@@ -82,6 +98,18 @@ export default function ProfileScreen() {
         }
       ]
     );
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
   };
 
   if (!user) {
@@ -161,13 +189,6 @@ export default function ProfileScreen() {
                 {/* Metrics Cards */}
                 <View style={styles.metricsContainer}>
 
-                  {/* Balance Card */}
-                  <View style={styles.metricCard}>
-                    <View style={styles.cardInner}>
-                      <Text style={styles.metricLabel}>BALANCE</Text>
-                      <Text style={styles.metricValue}>${balance.toFixed(2)}</Text>
-                    </View>
-                  </View>
 
                   {/* Total Profit Card */}
                   <View style={styles.metricCard}>
@@ -177,10 +198,10 @@ export default function ProfileScreen() {
                     </View>
                   </View>
 
-                  {/* Sleep Logged Card */}
+                  {/* Average Sleep Card */}
                   <View style={styles.metricCard}>
                     <View style={styles.cardInner}>
-                      <Text style={styles.metricLabel}>SLEEP LOGGED</Text>
+                      <Text style={styles.metricLabel}>AVG SLEEP / DAY</Text>
                       <Text style={styles.metricValue}>{sleepLogged}h</Text>
                     </View>
                   </View>
@@ -363,6 +384,55 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontFamily: 'Inter_800ExtraBold',
     color: '#000000',
+  },
+
+  // Activity Log
+  activityLogCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 4,
+    borderColor: '#000000',
+    marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 6,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 0.5,
+  },
+  spacer: {
+    height: 16,
+  },
+  logItem: {
+    borderWidth: 2,
+    borderColor: '#000',
+    backgroundColor: '#FAFAFA',
+    padding: 10,
+    marginBottom: 8,
+  },
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  logType: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
+    letterSpacing: 0.5,
+  },
+  logTime: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#999',
+  },
+  logMessage: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#000',
   },
 
   // Actions

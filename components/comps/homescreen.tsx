@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert, Image } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
-import { getStats, addSleep, addProfit } from '@/lib/homepage_utils';
+import { getStats, addSleep } from '@/lib/homepage_utils';
 import { getActivityFeed, subscribeToActivityFeed } from '@/lib/activity_log_utils';
 import { getUserActiveGame } from '@/lib/game_utils';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 
 const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
   const width = 180;
@@ -75,12 +76,13 @@ interface FeedItem {
   action: string;
   timestamp: string;
   type: 'wakeup' | 'comment' | 'bet' | 'win';
+  image?: string | null;
 }
 
 // Purely presentational home screen – no navigation/auth logic, just UI
 export default function HomeScreen() {
   const { getUserProfile } = useAuth();
-  const [sleepLogged, setSleepLogged] = useState(0);
+  const [sleepAverage, setSleepAverage] = useState(0);
   const [profitMade, setProfitMade] = useState(0);
   const [sleepData, setSleepData] = useState([0]);
   const [profitData, setProfitData] = useState([0]);
@@ -91,7 +93,6 @@ export default function HomeScreen() {
   useEffect(() => {
     loadUserData();
     loadFeed();
-    checkActiveGame();
 
     // Subscribe to real-time updates
     const unsubscribe = subscribeToActivityFeed((newLog) => {
@@ -101,6 +102,7 @@ export default function HomeScreen() {
         action: newLog.message,
         timestamp: formatTimestamp(newLog.timestep),
         type: newLog.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+        image: newLog.image,
       };
       setFeedItems((prev) => [newItem, ...prev]);
     });
@@ -111,12 +113,19 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // Check for active game every time the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      checkActiveGame();
+    }, [])
+  );
+
   const loadUserData = async () => {
     const profile = await getUserProfile();
     if (profile?.hash) {
       setUserHash(profile.hash);
       const stats = await getStats(profile.hash);
-      setSleepLogged(stats.sleepLogged);
+      setSleepAverage(stats.sleepAverage);
       setProfitMade(stats.profitMade);
       setSleepData(stats.sleepHistory.length > 0 ? stats.sleepHistory : [0]);
       setProfitData(stats.profitHistory.length > 0 ? stats.profitHistory : [0]);
@@ -141,6 +150,7 @@ export default function HomeScreen() {
       action: log.message,
       timestamp: formatTimestamp(log.timestep),
       type: log.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+      image: log.image,
     }));
     setFeedItems(items);
   };
@@ -172,28 +182,6 @@ export default function HomeScreen() {
       Alert.alert('Error', `Failed to add sleep: ${result.error?.message || 'Unknown error'}`);
     }
   };
-
-  const handleAddProfit = async () => {
-    console.log('=== handleAddProfit called ===');
-    console.log('userHash:', userHash);
-
-    if (!userHash) {
-      console.error('No userHash found!');
-      Alert.alert('Error', 'User not authenticated. userHash is null.');
-      return;
-    }
-
-    const result = await addProfit(userHash, 10);
-    console.log('addProfit result:', result);
-
-    if (result.ok) {
-      Alert.alert('Success', 'Added $10 profit!');
-      loadUserData();
-    } else {
-      console.error('addProfit failed:', result.error);
-      Alert.alert('Error', `Failed to add profit: ${result.error?.message || 'Unknown error'}`);
-    }
-  };
   
   return (
     <ImageBackground
@@ -206,7 +194,7 @@ export default function HomeScreen() {
       <ScrollView style={styles.scrollContent}>
         <View style={styles.content}>
 
-          {/* Sleep Today with Chart */}
+          {/* Average Sleep with Chart */}
           <TouchableOpacity
             style={styles.arcadeCard}
             onPress={handleAddSleep}
@@ -214,8 +202,8 @@ export default function HomeScreen() {
             <View style={styles.cardInner}>
               <View style={styles.metricRow}>
                 <View style={styles.metricLeft}>
-                  <Text style={styles.statLabel}>SLEEP LOGGED</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{sleepLogged}h</Text>
+                  <Text style={styles.statLabel}>AVG SLEEP / DAY</Text>
+                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{sleepAverage}h</Text>
                 </View>
                 <View style={styles.chartContainer}>
                   <MiniLineChart data={sleepData} color="#000" height={60} />
@@ -229,10 +217,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           {/* Profit with Chart */}
-          <TouchableOpacity
-            style={styles.arcadeCard}
-            onPress={handleAddProfit}
-          >
+          <View style={styles.arcadeCard}>
             <View style={styles.cardInner}>
               <View style={styles.metricRow}>
                 <View style={styles.metricLeft}>
@@ -243,12 +228,8 @@ export default function HomeScreen() {
                 <MiniLineChart2 data={profitData} color="#000" height={60} />
                 </View>
               </View>
-              <View style={styles.dividerLight} />
-              <View style={styles.linkRow}>
-                <Text style={styles.linkText}>TAP TO ADD $10 →</Text>
-              </View>
             </View>
-          </TouchableOpacity>
+          </View>
 
           {/* Feed Section */}
           <View style={styles.arcadeCard}>
@@ -269,6 +250,13 @@ export default function HomeScreen() {
                       <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
                     </View>
                     <Text style={styles.feedAction}>{item.action}</Text>
+                    {item.image && (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={styles.feedImage}
+                        resizeMode="cover"
+                      />
+                    )}
                   </View>
                 ))
               )}
@@ -444,6 +432,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
     lineHeight: 18,
+  },
+  feedImage: {
+    width: '100%',
+    height: 200,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#000',
   },
   viewMoreButton: {
     marginTop: 8,

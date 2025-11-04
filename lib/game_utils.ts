@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { addActivityLog } from './activity_log_utils';
 
 export interface Game {
   id: string;
@@ -37,8 +38,9 @@ export interface GameLog {
   game_id: string;
   user_hash: string | null;
   message: string;
-  event_type: 'join' | 'wakeup' | 'elimination' | 'win' | 'missed_wakeup' | 'game_start' | 'game_end';
+  event_type: 'join' | 'wakeup' | 'elimination' | 'win' | 'missed_wakeup' | 'game_start' | 'game_end' | 'chat' | 'proof';
   created_at: string;
+  photo_url?: string | null;
 }
 
 export interface GameWithPlayers extends Game {
@@ -303,15 +305,52 @@ export async function addGameLog(
 }
 
 /**
- * Submit wakeup proof (photo)
- * This will be fully implemented later with photo upload
+ * Send a chat message in a game
+ */
+export async function sendChatMessage(
+  gameId: string,
+  userHash: string,
+  message: string
+): Promise<{ ok: boolean; error?: any }> {
+  console.log('=== sendChatMessage ===');
+  console.log('Game ID:', gameId);
+  console.log('User hash:', userHash);
+  console.log('Message:', message);
+
+  const { error } = await supabase
+    .from('game_logs')
+    .insert({
+      game_id: gameId,
+      user_hash: userHash,
+      message: message,
+      event_type: 'chat',
+    });
+
+  if (error) {
+    console.error('Failed to send chat message:', error);
+    return { ok: false, error };
+  }
+
+  console.log('Chat message sent successfully');
+  return { ok: true };
+}
+
+/**
+ * Submit wakeup proof (photo) with photo upload to Supabase Storage
  */
 export async function submitWakeupProof(
   gameId: string,
   userHash: string,
-  photoUrl: string,
+  photoUri: string,
+  caption: string,
   wakeUpTime: string
 ): Promise<{ ok: boolean; isOnTime?: boolean; error?: any }> {
+  console.log('=== submitWakeupProof ===');
+  console.log('Game ID:', gameId);
+  console.log('User hash:', userHash);
+  console.log('Photo URI:', photoUri);
+  console.log('Caption:', caption);
+
   const submissionDate = new Date().toISOString().split('T')[0];
   const submittedAt = new Date();
 
@@ -325,6 +364,7 @@ export async function submitWakeupProof(
     .maybeSingle();
 
   if (existing) {
+    console.error('Already submitted today');
     return { ok: false, error: { message: 'Already submitted today' } };
   }
 
@@ -335,6 +375,34 @@ export async function submitWakeupProof(
   deadline.setHours(hours, minutes, 0, 0);
 
   const isOnTime = now <= deadline;
+  console.log('Is on time:', isOnTime, 'Deadline:', deadline, 'Now:', now);
+
+  // Upload photo to Supabase Storage
+  console.log('Uploading photo to storage...');
+  const fileName = `${gameId}/${userHash}/${submissionDate}-${Date.now()}.jpg`;
+
+  // Convert photo URI to ArrayBuffer for React Native
+  const response = await fetch(photoUri);
+  const arrayBuffer = await response.arrayBuffer();
+
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('wakeup-proofs')
+    .upload(fileName, arrayBuffer, {
+      contentType: 'image/jpeg',
+      cacheControl: '3600',
+    });
+
+  if (uploadError) {
+    console.error('Failed to upload photo:', uploadError);
+    return { ok: false, error: uploadError };
+  }
+
+  // Get public URL
+  const { data: { publicUrl } } = supabase.storage
+    .from('wakeup-proofs')
+    .getPublicUrl(fileName);
+
+  console.log('Photo uploaded successfully:', publicUrl);
 
   // Insert submission
   const { error: insertError } = await supabase
@@ -343,7 +411,7 @@ export async function submitWakeupProof(
       game_id: gameId,
       user_hash: userHash,
       submission_date: submissionDate,
-      photo_url: photoUrl,
+      photo_url: publicUrl,
       submitted_at: submittedAt.toISOString(),
       is_on_time: isOnTime,
       verified: true,
@@ -373,22 +441,48 @@ export async function submitWakeupProof(
         .eq('game_id', gameId)
         .eq('user_hash', userHash);
     }
-
-    await addGameLog(
-      gameId,
-      userHash,
-      `Player ${userHash.substring(0, 8)} woke up on time!`,
-      'wakeup'
-    );
-  } else {
-    await addGameLog(
-      gameId,
-      userHash,
-      `Player ${userHash.substring(0, 8)} missed wakeup time`,
-      'missed_wakeup'
-    );
   }
 
+  // Add proof log entry with photo URL
+  const proofMessage = caption ? `"${caption}"` : 'submitted wakeup proof';
+  await supabase
+    .from('game_logs')
+    .insert({
+      game_id: gameId,
+      user_hash: userHash,
+      message: `${userHash.substring(0, 8)}: ${proofMessage}`,
+      event_type: 'proof',
+      photo_url: publicUrl,
+    });
+
+  // Add to activity feed with verification status
+  const verificationEmoji = isOnTime ? '✓' : '✗';
+  const timeString = submittedAt.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const activityMessage = `${verificationEmoji} Submitted wakeup proof at ${timeString} - "${caption}"`;
+
+  console.log('=== Adding to activity feed ===');
+  console.log('Activity message:', activityMessage);
+  console.log('Photo URL:', publicUrl);
+
+  const activityAdded = await addActivityLog(
+    userHash,
+    userHash,
+    activityMessage,
+    'wakeup',
+    publicUrl
+  );
+
+  if (!activityAdded) {
+    console.error('⚠️ WARNING: Failed to add to activity feed! Check RLS on activity_log table');
+  } else {
+    console.log('✅ Successfully added to activity feed!');
+  }
+
+  console.log('Proof submitted successfully!');
   return { ok: true, isOnTime };
 }
 

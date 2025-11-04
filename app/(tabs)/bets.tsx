@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginModal from '@/components/modals/LoginModal';
+import ProofSubmissionModal from '@/components/modals/ProofSubmissionModal';
 import { UserAvatar } from '@/components/Avatar';
 import {
   getJoinableGames,
@@ -11,6 +12,9 @@ import {
   createGame,
   joinGame,
   getGameDetails,
+  submitWakeupProof,
+  sendChatMessage,
+  getGameSubmissions,
   Game,
   GameWithPlayers,
 } from '@/lib/game_utils';
@@ -36,6 +40,13 @@ export default function BetsScreen() {
 
   // Track if user has submitted proof today
   const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
+
+  // Modal visibility states
+  const [proofModalVisible, setProofModalVisible] = useState(false);
+
+  // Chat state
+  const [chatMessage, setChatMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   useEffect(() => {
     loadUserHash();
@@ -77,6 +88,13 @@ export default function BetsScreen() {
       });
       setActiveGame(gameDetails);
       setJoinableGames([]); // Clear joinable games
+
+      // Check if user has submitted today
+      const today = new Date().toISOString().split('T')[0];
+      const submissions = await getGameSubmissions(activeGameData.id, today);
+      const userSubmission = submissions.find(s => s.user_hash === userHash);
+      setHasSubmittedToday(!!userSubmission);
+      console.log('User submitted today:', !!userSubmission);
     } else {
       // No active game - load joinable games
       const joinable = await getJoinableGames();
@@ -139,6 +157,54 @@ export default function BetsScreen() {
     } else {
       console.error('Failed to join game:', result.error);
       Alert.alert('Error', `Failed to join game: ${result.error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleProofSubmit = async (photoUri: string, caption: string) => {
+    if (!activeGame || !userHash) return;
+
+    console.log('=== handleProofSubmit ===');
+    const result = await submitWakeupProof(
+      activeGame.id,
+      userHash,
+      photoUri,
+      caption,
+      activeGame.wake_up_time
+    );
+
+    if (result.ok) {
+      Alert.alert(
+        'Success!',
+        result.isOnTime
+          ? 'Your wakeup proof was submitted on time!'
+          : 'Your wakeup proof was submitted, but it was late.'
+      );
+      loadGames(); // Reload to update submission status
+    } else {
+      throw new Error(result.error?.message || 'Failed to submit proof');
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!activeGame || !userHash || !chatMessage.trim()) return;
+
+    console.log('=== handleSendMessage ===');
+    setSendingMessage(true);
+    try {
+      const result = await sendChatMessage(activeGame.id, userHash, chatMessage);
+
+      if (result.ok) {
+        console.log('Chat message sent successfully');
+        setChatMessage('');
+        loadGames(); // Reload to update logs
+      } else {
+        Alert.alert('Error', 'Failed to send message');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message');
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -263,6 +329,31 @@ export default function BetsScreen() {
                     </View>
                   ))
                 )}
+
+                {/* Chat Input */}
+                <View style={styles.chatInputContainer}>
+                  <TextInput
+                    style={styles.chatInput}
+                    placeholder="Type a message..."
+                    placeholderTextColor="#999"
+                    value={chatMessage}
+                    onChangeText={setChatMessage}
+                    multiline
+                    maxLength={500}
+                    editable={!sendingMessage}
+                  />
+                  <TouchableOpacity
+                    style={[styles.sendButton, (sendingMessage || !chatMessage.trim()) && styles.sendButtonDisabled]}
+                    onPress={handleSendMessage}
+                    disabled={sendingMessage || !chatMessage.trim()}
+                  >
+                    {sendingMessage ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Text style={styles.sendButtonText}>SEND</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </>
             )}
           </View>
@@ -276,7 +367,7 @@ export default function BetsScreen() {
           ]}
           onPress={() => {
             if (!hasSubmittedToday) {
-              Alert.alert('Submit Proof', 'Photo submission coming soon!');
+              setProofModalVisible(true);
             }
           }}
           disabled={hasSubmittedToday}
@@ -424,6 +515,17 @@ export default function BetsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Proof Submission Modal */}
+      {activeGame && userHash && (
+        <ProofSubmissionModal
+          visible={proofModalVisible}
+          onClose={() => setProofModalVisible(false)}
+          onSubmit={handleProofSubmit}
+          gameId={activeGame.id}
+          wakeUpTime={activeGame.wake_up_time}
+        />
+      )}
     </ImageBackground>
   );
 }
@@ -814,8 +916,6 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 16,
     alignItems: 'center',
-    alignSelf: 'center',
-    width: '55%',
     shadowColor: '#000',
     shadowOffset: { width: 4, height: 4 },
     shadowOpacity: 1,
@@ -832,5 +932,47 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     fontSize: 14,
     letterSpacing: 1,
+  },
+  chatInputContainer: {
+    flexDirection: 'row',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: '#E0E0E0',
+    gap: 12,
+  },
+  chatInput: {
+    flex: 1,
+    borderWidth: 3,
+    borderColor: '#000',
+    backgroundColor: '#FFF',
+    padding: 12,
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    maxHeight: 100,
+  },
+  sendButton: {
+    backgroundColor: '#000',
+    borderWidth: 3,
+    borderColor: '#000',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#CCC',
+    borderColor: '#999',
+  },
+  sendButtonText: {
+    color: '#FFF',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
 });
