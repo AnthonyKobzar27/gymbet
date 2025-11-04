@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { initializeStripe } from '@/services/stripe';
+//import { initializeStripe } from '@/services/stripe';
 import { AuthProvider } from '@/contexts/AuthContext';
 
 export {
@@ -42,7 +42,7 @@ export default function RootLayout() {
     if (loaded) {
       SplashScreen.hideAsync();
       // Initialize Stripe when the app is ready
-      initializeStripe();
+      //initializeStripe();
     }
   }, [loaded]);
 

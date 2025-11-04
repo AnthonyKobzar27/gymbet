@@ -4,7 +4,8 @@ import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
-import { getStats, initStats, addSleep, addProfit } from '@/lib/homepage_utils';
+import { getStats, addSleep, addProfit } from '@/lib/homepage_utils';
+import { getActivityFeed, subscribeToActivityFeed } from '@/lib/activity_log_utils';
 
 const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
   const width = 180;
@@ -12,9 +13,9 @@ const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], 
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
-  
+
   const points = data.map((value, index) => {
-    const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
+    const x = data.length === 1 ? width / 2 : padding + (index / (data.length - 1)) * (width - 2 * padding);
     const y = height - padding - ((value - min) / range) * (height - 2 * padding);
     return `${x},${y}`;
   }).join(' ');
@@ -27,7 +28,7 @@ const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], 
       <Path d={`M ${points}`} fill="none" stroke={color} strokeWidth="3" />
       {/* Points */}
       {data.map((value, index) => {
-        const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
+        const x = data.length === 1 ? width / 2 : padding + (index / (data.length - 1)) * (width - 2 * padding);
         const y = height - padding - ((value - min) / range) * (height - 2 * padding);
         return <Circle key={index} cx={x} cy={y} r="3" fill={color} />;
       })}
@@ -82,16 +83,34 @@ export default function HomeScreen() {
   const [sleepData, setSleepData] = useState([0]);
   const [profitData, setProfitData] = useState([0]);
   const [userHash, setUserHash] = useState<string | null>(null);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
 
   useEffect(() => {
     loadUserData();
+    loadFeed();
+
+    // Subscribe to real-time updates
+    const unsubscribe = subscribeToActivityFeed((newLog) => {
+      const newItem: FeedItem = {
+        id: newLog.id.toString(),
+        userHash: newLog.user_hash,
+        action: newLog.message,
+        timestamp: formatTimestamp(newLog.timestep),
+        type: newLog.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+      };
+      setFeedItems((prev) => [newItem, ...prev]);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const loadUserData = async () => {
     const profile = await getUserProfile();
     if (profile?.hash) {
       setUserHash(profile.hash);
-      await initStats(profile.hash);
       const stats = await getStats(profile.hash);
       setSleepLogged(stats.sleepLogged);
       setProfitMade(stats.profitMade);
@@ -100,38 +119,67 @@ export default function HomeScreen() {
     }
   };
 
+  const loadFeed = async () => {
+    const logs = await getActivityFeed();
+    const items: FeedItem[] = logs.map(log => ({
+      id: log.id.toString(),
+      userHash: log.user_hash,
+      action: log.message,
+      timestamp: formatTimestamp(log.timestep),
+      type: log.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+    }));
+    setFeedItems(items);
+  };
+
+  const formatTimestamp = (timestep: string): string => {
+    const now = new Date();
+    const then = new Date(timestep);
+    const diffMs = now.getTime() - then.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hour${Math.floor(diffMins / 60) > 1 ? 's' : ''} ago`;
+    return `${Math.floor(diffMins / 1440)} day${Math.floor(diffMins / 1440) > 1 ? 's' : ''} ago`;
+  };
+
   const handleAddSleep = async () => {
-    if (!userHash) return;
+    if (!userHash) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
 
     const result = await addSleep(userHash, 8);
     if (result.ok) {
       Alert.alert('Success', 'Added 8 hours of sleep!');
       loadUserData();
     } else {
-      Alert.alert('Error', 'Failed to add sleep');
+      console.error('Failed to add sleep:', result.error);
+      Alert.alert('Error', `Failed to add sleep: ${result.error?.message || 'Unknown error'}`);
     }
   };
 
   const handleAddProfit = async () => {
-    if (!userHash) return;
+    console.log('=== handleAddProfit called ===');
+    console.log('userHash:', userHash);
+
+    if (!userHash) {
+      console.error('No userHash found!');
+      Alert.alert('Error', 'User not authenticated. userHash is null.');
+      return;
+    }
 
     const result = await addProfit(userHash, 10);
+    console.log('addProfit result:', result);
+
     if (result.ok) {
       Alert.alert('Success', 'Added $10 profit!');
       loadUserData();
     } else {
-      Alert.alert('Error', 'Failed to add profit');
+      console.error('addProfit failed:', result.error);
+      Alert.alert('Error', `Failed to add profit: ${result.error?.message || 'Unknown error'}`);
     }
   };
-  
-  // Mock feed data
-  const feedItems: FeedItem[] = [
-    { id: '1', userHash: '0x742d35Cc6634C0532925a3b8', action: 'woke up at 6:30 AM and won $10!', timestamp: '2 min ago', type: 'wakeup' },
-    { id: '2', userHash: '0x89Ab23Ef5678C0532925a3b9', action: 'said: "Let\'s go! Easy money"', timestamp: '15 min ago', type: 'comment' },
-    { id: '3', userHash: '0x456f78Cd9012C0532925a3c0', action: 'joined a new game with $5 stake', timestamp: '1 hour ago', type: 'bet' },
-    { id: '4', userHash: '0x123e45Bc6789C0532925a3d1', action: 'woke up at 7:00 AM and won $15!', timestamp: '2 hours ago', type: 'win' },
-    { id: '5', userHash: '0x987g65Hi4321C0532925a3e2', action: 'said: "Morning crew checking in!"', timestamp: '3 hours ago', type: 'comment' },
-  ];
   
   return (
     <ImageBackground
@@ -194,21 +242,25 @@ export default function HomeScreen() {
               <Text style={styles.cardTitle}>ACTIVITY FEED</Text>
               <View style={styles.spacer} />
               
-              {feedItems.map((item) => (
-                <View key={item.id} style={styles.feedItem}>
-                  <View style={styles.feedHeader}>
-                    <View style={styles.feedUserRow}>
-                      <Text style={styles.feedEmoji}></Text>
-                      <Text style={styles.feedUser}>{item.userHash}</Text>
+              {feedItems.length === 0 ? (
+                <Text style={styles.feedAction}>No activity yet. Be the first to join a game!</Text>
+              ) : (
+                feedItems.map((item) => (
+                  <View key={item.id} style={styles.feedItem}>
+                    <View style={styles.feedHeader}>
+                      <View style={styles.feedUserRow}>
+                        <Text style={styles.feedEmoji}></Text>
+                        <Text style={styles.feedUser}>{item.userHash}</Text>
+                      </View>
+                      <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
                     </View>
-                    <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
+                    <Text style={styles.feedAction}>{item.action}</Text>
                   </View>
-                  <Text style={styles.feedAction}>{item.action}</Text>
-                </View>
-              ))}
-              
-              <TouchableOpacity style={styles.viewMoreButton}>
-                <Text style={styles.viewMoreText}>VIEW MORE ACTIVITY →</Text>
+                ))
+              )}
+
+              <TouchableOpacity style={styles.viewMoreButton} onPress={loadFeed}>
+                <Text style={styles.viewMoreText}>REFRESH ACTIVITY →</Text>
               </TouchableOpacity>
             </View>
           </View>

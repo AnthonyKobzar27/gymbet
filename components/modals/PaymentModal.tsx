@@ -14,7 +14,7 @@ import {
   Dimensions
 } from 'react-native';
 import { CardField, useStripe } from '@stripe/stripe-react-native';
-import { addTransaction, createPaymentIntent } from '../../services/stripe';
+//import { addTransaction, createPaymentIntent } from '../../services/stripe';
 import { getBalance, deposit, withdraw } from '../../lib/transaction_utils';
 import { useAuth } from '../../contexts/AuthContext';
 

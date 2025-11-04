@@ -4,7 +4,7 @@ import { Tabs } from 'expo-router';
 import { Modal, TouchableOpacity, Text, StyleSheet, View, Platform} from 'react-native';
 // import { useWallet } from '../providers/WalletConnectProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import PaymentModal from '@/components/modals/PaymentModal';
+//import PaymentModal from '@/components/modals/PaymentModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import { Image } from 'react-native';
@@ -144,12 +144,13 @@ export function HeaderRight() {
         </View>
       </Modal>
 
-      {/* Payment Modal */}
+      {/*
       <PaymentModal
         visible={paymentModalVisible}
         onClose={handlePaymentModalClose}
         type="deposit"
       />
+      */}
       
       <LoginModal 
         visible={loginModalVisible} 
