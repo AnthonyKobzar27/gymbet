@@ -542,11 +542,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 10,
-    paddingTop: 40,
+    paddingTop: 50,
     overflow: 'hidden',
   },
   content: {
     padding: 20,
+    paddingBottom: 100,
   },
   arcadeCard: {
     borderWidth: 4,

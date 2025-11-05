@@ -168,10 +168,11 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    paddingBottom: 100,
   },
   content: {
     padding: 16,
-    paddingTop: 100, // Account for header
+    paddingTop: 50, // Account for header
   },
   loadingContainer: {
     flex: 1,

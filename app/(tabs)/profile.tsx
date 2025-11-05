@@ -263,6 +263,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,
