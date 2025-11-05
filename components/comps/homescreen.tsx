@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Alert, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Image, Modal, TextInput } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
+import Svg, { Path, Line, Circle } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
-import { getStats, addSleep } from '@/lib/homepage_utils';
-import { getActivityFeed, subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes } from '@/lib/activity_log_utils';
+import { getStats, addSleep, canLogSleepToday as checkCanLogSleep } from '@/lib/homepage_utils';
+import { subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes, getProofsForValidator, checkPBFTValidation } from '@/lib/activity_log_utils';
 import { getUserActiveGame } from '@/lib/game_utils';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
@@ -93,6 +93,9 @@ export default function HomeScreen() {
   const [userHash, setUserHash] = useState<string | null>(null);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [hasActiveGame, setHasActiveGame] = useState(false);
+  const [sleepModalVisible, setSleepModalVisible] = useState(false);
+  const [sleepHoursInput, setSleepHoursInput] = useState('');
+  const [canLogSleepToday, setCanLogSleepToday] = useState(true);
 
   useEffect(() => {
     loadUserData();
@@ -133,6 +136,10 @@ export default function HomeScreen() {
       setProfitMade(stats.profitMade);
       setSleepData(stats.sleepHistory.length > 0 ? stats.sleepHistory : [0]);
       setProfitData(stats.profitHistory.length > 0 ? stats.profitHistory : [0]);
+
+      // Check if user can log sleep today
+      const canLog = await checkCanLogSleep(profile.hash);
+      setCanLogSleepToday(canLog);
     }
   };
 
@@ -147,7 +154,17 @@ export default function HomeScreen() {
   };
 
   const loadFeed = async () => {
-    const logs = await getActivityFeed();
+    if (!userHash) {
+      console.log('No user hash, skipping feed load');
+      return;
+    }
+
+    console.log('=== Loading feed for validator ===');
+    console.log('User hash:', userHash);
+
+    // Get proofs assigned to this user for validation (PBFT system)
+    const logs = await getProofsForValidator(userHash);
+    console.log('Proofs assigned for validation:', logs.length);
 
     // Get activity IDs for fetching votes
     const activityIds = logs.map(log => log.id);
@@ -155,7 +172,7 @@ export default function HomeScreen() {
     // Load vote counts and user votes in parallel
     const [voteCounts, userVotesMap] = await Promise.all([
       getVoteCounts(activityIds),
-      userHash ? getUserVotes(activityIds, userHash) : Promise.resolve(new Map()),
+      getUserVotes(activityIds, userHash),
     ]);
 
     const items: FeedItem[] = logs.map(log => {
@@ -175,6 +192,7 @@ export default function HomeScreen() {
       };
     });
 
+    console.log('Feed items loaded:', items.length);
     setFeedItems(items);
   };
 
@@ -190,19 +208,39 @@ export default function HomeScreen() {
     return `${Math.floor(diffMins / 1440)} day${Math.floor(diffMins / 1440) > 1 ? 's' : ''} ago`;
   };
 
-  const handleAddSleep = async () => {
+  const handleOpenSleepModal = () => {
+    setSleepHoursInput('');
+    setSleepModalVisible(true);
+  };
+
+  const handleSubmitSleep = async () => {
     if (!userHash) {
       Alert.alert('Error', 'User not authenticated');
       return;
     }
 
-    const result = await addSleep(userHash, 8);
+    const hours = parseFloat(sleepHoursInput);
+    if (isNaN(hours) || hours <= 0 || hours > 24) {
+      Alert.alert('Invalid Input', 'Please enter a valid number of hours between 0 and 24');
+      return;
+    }
+
+    setSleepModalVisible(false);
+    const result = await addSleep(userHash, hours);
     if (result.ok) {
-      Alert.alert('Success', 'Added 8 hours of sleep!');
+      Alert.alert('Success', `Logged ${hours} hours of sleep!`);
+      setCanLogSleepToday(false); // Disable sleep logging immediately
       loadUserData();
     } else {
       console.error('Failed to add sleep:', result.error);
-      Alert.alert('Error', `Failed to add sleep: ${result.error?.message || 'Unknown error'}`);
+      const errorMessage = result.error?.message || 'Unknown error';
+
+      // Show special message if already logged today
+      if (errorMessage.includes('already logged sleep today')) {
+        Alert.alert('Already Logged', 'You have already logged your sleep for today. Come back tomorrow! 😴');
+      } else {
+        Alert.alert('Error', `Failed to log sleep: ${errorMessage}`);
+      }
     }
   };
 
@@ -273,6 +311,17 @@ export default function HomeScreen() {
           throw new Error('Failed to submit vote');
         }
       }
+
+      // Check PBFT validation status after vote
+      console.log('Checking PBFT validation status...');
+      const validation = await checkPBFTValidation(activityIdNum);
+      console.log('PBFT Status:', validation.status, 'Approvals:', validation.approvals, '/', validation.required);
+
+      if (validation.status === 'approved') {
+        Alert.alert('Proof Approved!', 'This proof has been validated by 2/3 majority (PBFT consensus)');
+      } else if (validation.status === 'rejected') {
+        Alert.alert('Proof Rejected', 'This proof was rejected by the validators');
+      }
     } catch (error) {
       console.error('Error voting:', error);
       // Revert the optimistic update on error
@@ -287,14 +336,18 @@ export default function HomeScreen() {
       imageStyle={{resizeMode: "cover"}}
     >
     <SafeAreaView style={{ flex: 1 }}>
-      <View style = {[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
-      <ScrollView style={styles.scrollContent}>
+      <View style={styles.scrollWrapper}>
+      <ScrollView
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+      >
         <View style={styles.content}>
 
           {/* Average Sleep with Chart */}
           <TouchableOpacity
             style={styles.arcadeCard}
-            onPress={handleAddSleep}
+            onPress={canLogSleepToday ? handleOpenSleepModal : undefined}
+            disabled={!canLogSleepToday}
           >
             <View style={styles.cardInner}>
               <View style={styles.metricRow}>
@@ -306,10 +359,22 @@ export default function HomeScreen() {
                   <MiniLineChart data={sleepData} color="#000" height={60} />
                 </View>
               </View>
-              <View style={styles.dividerLight} />
-              <View style={styles.linkRow}>
-                <Text style={styles.linkText}>TAP TO ADD 8H →</Text>
-              </View>
+              {canLogSleepToday && (
+                <>
+                  <View style={styles.dividerLight} />
+                  <View style={styles.linkRow}>
+                    <Text style={styles.linkText}>LOG SLEEP →</Text>
+                  </View>
+                </>
+              )}
+              {!canLogSleepToday && (
+                <>
+                  <View style={styles.dividerLight} />
+                  <View style={styles.linkRow}>
+                    <Text style={styles.linkTextDisabled}>✓ LOGGED TODAY</Text>
+                  </View>
+                </>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -333,67 +398,73 @@ export default function HomeScreen() {
             <View style={styles.cardInner}>
               <Text style={styles.cardTitle}>ACTIVITY FEED</Text>
               <View style={styles.spacer} />
-              
+
               {feedItems.length === 0 ? (
                 <Text style={styles.feedAction}>No activity yet. Be the first to join a game!</Text>
               ) : (
-                feedItems.map((item) => (
-                  <View key={item.id} style={styles.feedItem}>
-                    <View style={styles.feedHeader}>
-                      <View style={styles.feedUserRow}>
-                        <UserAvatar hash={item.userHash} size={32} />
-                        <View style={styles.feedUserInfo}>
-                          <Text style={styles.feedUser}>
-                            {item.userHash.substring(0, 8)}...
-                          </Text>
-                          <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
+                <ScrollView
+                  style={styles.feedScrollView}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  {feedItems.map((item) => (
+                    <View key={item.id} style={styles.feedItem}>
+                      <View style={styles.feedHeader}>
+                        <View style={styles.feedUserRow}>
+                          <UserAvatar hash={item.userHash} size={32} />
+                          <View style={styles.feedUserInfo}>
+                            <Text style={styles.feedUser}>
+                              0x{item.userHash.substring(0, 8)}...
+                            </Text>
+                            <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
+                          </View>
                         </View>
                       </View>
+                      <Text style={styles.feedAction}>{item.action}</Text>
+                      {item.image && (
+                        <Image
+                          source={{ uri: item.image }}
+                          style={styles.feedImage}
+                          resizeMode="cover"
+                        />
+                      )}
+                      {item.type === 'wakeup' && (
+                        <View style={styles.voteContainer}>
+                          <TouchableOpacity
+                            style={[
+                              styles.voteButton,
+                              styles.approveButton,
+                              item.userVote === 'approve' && styles.voteButtonActive
+                            ]}
+                            onPress={() => handleVote(item.id, 'approve')}
+                          >
+                            <Text style={[
+                              styles.voteButtonText,
+                              item.userVote === 'approve' && styles.voteButtonTextActive
+                            ]}>
+                              ✓ ACCEPT {item.approvals ? `(${item.approvals})` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.voteButton,
+                              styles.rejectButton,
+                              item.userVote === 'reject' && styles.voteButtonActive
+                            ]}
+                            onPress={() => handleVote(item.id, 'reject')}
+                          >
+                            <Text style={[
+                              styles.voteButtonText,
+                              item.userVote === 'reject' && styles.voteButtonTextActive
+                            ]}>
+                              ✕ REJECT {item.rejections ? `(${item.rejections})` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                    <Text style={styles.feedAction}>{item.action}</Text>
-                    {item.image && (
-                      <Image
-                        source={{ uri: item.image }}
-                        style={styles.feedImage}
-                        resizeMode="cover"
-                      />
-                    )}
-                    {item.type === 'wakeup' && (
-                      <View style={styles.voteContainer}>
-                        <TouchableOpacity
-                          style={[
-                            styles.voteButton,
-                            styles.approveButton,
-                            item.userVote === 'approve' && styles.voteButtonActive
-                          ]}
-                          onPress={() => handleVote(item.id, 'approve')}
-                        >
-                          <Text style={[
-                            styles.voteButtonText,
-                            item.userVote === 'approve' && styles.voteButtonTextActive
-                          ]}>
-                            ✓ ACCEPT {item.approvals ? `(${item.approvals})` : ''}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.voteButton,
-                            styles.rejectButton,
-                            item.userVote === 'reject' && styles.voteButtonActive
-                          ]}
-                          onPress={() => handleVote(item.id, 'reject')}
-                        >
-                          <Text style={[
-                            styles.voteButtonText,
-                            item.userVote === 'reject' && styles.voteButtonTextActive
-                          ]}>
-                            ✕ REJECT {item.rejections ? `(${item.rejections})` : ''}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                ))
+                  ))}
+                </ScrollView>
               )}
 
               <TouchableOpacity style={styles.viewMoreButton} onPress={loadFeed}>
@@ -425,6 +496,46 @@ export default function HomeScreen() {
       </ScrollView>
       </View>
     </SafeAreaView>
+
+    {/* Sleep Log Modal */}
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={sleepModalVisible}
+      onRequestClose={() => setSleepModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.sleepModalContent}>
+          <Text style={styles.sleepModalTitle}>LOG SLEEP</Text>
+          <Text style={styles.sleepModalSubtitle}>How many hours did you sleep?</Text>
+
+          <TextInput
+            style={styles.sleepInput}
+            value={sleepHoursInput}
+            onChangeText={setSleepHoursInput}
+            placeholder="8"
+            placeholderTextColor="#999"
+            keyboardType="decimal-pad"
+            maxLength={4}
+          />
+
+          <View style={styles.sleepModalButtons}>
+            <TouchableOpacity
+              style={styles.sleepModalButtonSecondary}
+              onPress={() => setSleepModalVisible(false)}
+            >
+              <Text style={styles.sleepModalButtonSecondaryText}>CANCEL</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sleepModalButtonPrimary}
+              onPress={handleSubmitSleep}
+            >
+              <Text style={styles.sleepModalButtonPrimaryText}>LOG</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
     </ImageBackground>
   );
 }
@@ -435,8 +546,8 @@ const styles = StyleSheet.create({
     width: '100%', 
     height: '100%',
   },
-  scrollWrapper: { 
-    overflow: 'hidden' 
+  scrollWrapper: {
+    flex: 1,
   },
   container: {
     flex: 1,
@@ -444,7 +555,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 50,
   },
   arcadeCard: {
     borderWidth: 4,
@@ -523,6 +634,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'Inter_700Bold',
     letterSpacing: 0.5,
+  },
+  linkTextDisabled: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+    color: '#999',
+  },
+  feedScrollView: {
+    maxHeight: 600,
   },
   feedItem: {
     borderWidth: 3,
@@ -639,7 +759,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 10,
     paddingTop: 50,
-    overflow: 'hidden',
   },
   buttonPrimary: {
     backgroundColor: '#000',
@@ -678,5 +797,90 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     fontSize: 14,
     letterSpacing: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sleepModalContent: {
+    backgroundColor: '#FFF',
+    borderWidth: 4,
+    borderColor: '#000',
+    padding: 24,
+    width: '85%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 6,
+  },
+  sleepModalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  sleepModalSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  sleepInput: {
+    borderWidth: 3,
+    borderColor: '#000',
+    backgroundColor: '#FFF',
+    padding: 16,
+    fontSize: 24,
+    fontFamily: 'Inter_800ExtraBold',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  sleepModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  sleepModalButtonPrimary: {
+    flex: 1,
+    backgroundColor: '#000',
+    borderWidth: 3,
+    borderColor: '#000',
+    padding: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  sleepModalButtonPrimaryText: {
+    color: '#FFF',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  sleepModalButtonSecondary: {
+    flex: 1,
+    backgroundColor: '#FFF',
+    borderWidth: 3,
+    borderColor: '#000',
+    padding: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  sleepModalButtonSecondaryText: {
+    color: '#000',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
 });

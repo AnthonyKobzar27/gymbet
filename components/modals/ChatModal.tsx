@@ -114,7 +114,7 @@ export default function ChatModal({
                           styles.messageUser,
                           isOwnMessage && styles.ownMessageText
                         ]}>
-                          {isOwnMessage ? 'You' : log.user_hash?.substring(0, 8)}
+                          {isOwnMessage ? 'You' : `0x${log.user_hash?.substring(0, 8)}`}
                         </Text>
                         <Text style={[
                           styles.messageTime,

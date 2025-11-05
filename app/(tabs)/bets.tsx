@@ -297,7 +297,7 @@ export default function BetsScreen() {
                     <UserAvatar hash={player.user_hash} size={40} />
                     <View style={styles.playerInfo}>
                       <Text style={styles.playerHash}>
-                        {player.user_hash.substring(0, 12)}...
+                        0x{player.user_hash.substring(0, 12)}...
                       </Text>
                       <Text style={styles.playerWakeups}>
                         {player.total_wakeups} wakeups
@@ -315,19 +315,25 @@ export default function BetsScreen() {
                 {activeGame.logs.length === 0 ? (
                   <Text style={styles.emptyText}>No activity yet</Text>
                 ) : (
-                  activeGame.logs.map((log) => (
-                    <View key={log.id} style={styles.logItem}>
-                      <View style={styles.logHeader}>
-                        <Text style={styles.logType}>
-                          {log.event_type.toUpperCase()}
-                        </Text>
-                        <Text style={styles.logTime}>
-                          {formatDate(log.created_at)}
-                        </Text>
+                  <ScrollView
+                    style={styles.logScrollView}
+                    showsVerticalScrollIndicator={true}
+                    nestedScrollEnabled={true}
+                  >
+                    {activeGame.logs.map((log) => (
+                      <View key={log.id} style={styles.logItem}>
+                        <View style={styles.logHeader}>
+                          <Text style={styles.logType}>
+                            {log.event_type.toUpperCase()}
+                          </Text>
+                          <Text style={styles.logTime}>
+                            {formatDate(log.created_at)}
+                          </Text>
+                        </View>
+                        <Text style={styles.logMessage}>{log.message}</Text>
                       </View>
-                      <Text style={styles.logMessage}>{log.message}</Text>
-                    </View>
-                  ))
+                    ))}
+                  </ScrollView>
                 )}
 
                 {/* Chat Input */}
@@ -452,8 +458,11 @@ export default function BetsScreen() {
         </View>
       ) : (
         <SafeAreaView style={{ flex: 1 }}>
-          <View style={[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
-            <ScrollView style={styles.scrollContent}>
+          <View style={styles.scrollWrapper}>
+            <ScrollView
+              style={styles.scrollContent}
+              showsVerticalScrollIndicator={true}
+            >
               <View style={styles.content}>
                 {activeGame ? renderActiveGameView() : renderJoinableGamesView()}
               </View>
@@ -537,13 +546,12 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   scrollWrapper: {
-    overflow: 'hidden'
+    flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
     padding: 10,
     paddingTop: 50,
-    overflow: 'hidden',
   },
   content: {
     padding: 20,
@@ -669,6 +677,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: 'Inter_600SemiBold',
     color: '#666',
+  },
+  logScrollView: {
+    maxHeight: 300,
   },
   logItem: {
     borderWidth: 2,

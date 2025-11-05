@@ -53,6 +53,34 @@ export async function addActivityLog(
   return true;
 }
 
+// Add a new activity log entry and return the created record ID
+export async function addActivityLogWithId(
+  userHash: string,
+  senderHash: string,
+  message: string,
+  typeofmessage: string,
+  image?: string
+): Promise<{ ok: boolean; id?: number; error?: any }> {
+  const { data, error } = await supabase
+    .from('activity_log')
+    .insert({
+      user_hash: userHash,
+      sender_hash: senderHash,
+      message: message,
+      typeofmessage: typeofmessage,
+      image: image || null,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('failed to add activity log', error);
+    return { ok: false, error };
+  }
+
+  return { ok: true, id: data.id };
+}
+
 // Subscribe to new activity logs - real-time updates
 export function subscribeToActivityFeed(callback: (newLog: ActivityLog) => void) {
   const channel = supabase
@@ -177,4 +205,245 @@ export async function getUserVotes(
   });
 
   return votes;
+}
+
+// ========== PBFT Proof Distribution System ==========
+
+// Get validators for proof validation (ALL cohort members + random users up to 100 total)
+export async function getRandomValidators(
+  submitterHash: string,
+  gameId: string | null,
+  maxValidators: number = 100
+): Promise<string[]> {
+  console.log('=== getRandomValidators ===');
+  console.log('Submitter:', submitterHash);
+  console.log('Game ID:', gameId);
+  console.log('Max validators:', maxValidators);
+
+  // Start with cohort members (excluding submitter) - they MUST validate
+  let cohortHashes: string[] = [];
+  if (gameId) {
+    const { data: participants, error: participantsError } = await supabase
+      .from('game_participants')
+      .select('user_hash')
+      .eq('game_id', gameId)
+      .neq('user_hash', submitterHash);
+
+    if (!participantsError && participants) {
+      cohortHashes = participants.map(p => p.user_hash);
+      console.log('Cohort members (competitors):', cohortHashes.length);
+    }
+  }
+
+  // Calculate how many additional random validators we need
+  const remainingSlots = maxValidators - cohortHashes.length;
+  console.log('Remaining slots for random validators:', remainingSlots);
+
+  let randomValidators: string[] = [];
+  if (remainingSlots > 0) {
+    // Get all other users (excluding submitter and cohort members)
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('hash')
+      .neq('hash', submitterHash);
+
+    if (error) {
+      console.error('Failed to get profiles:', error);
+    } else if (profiles && profiles.length > 0) {
+      // Filter out cohort members
+      const availableValidators = profiles
+        .map(p => p.hash)
+        .filter(hash => !cohortHashes.includes(hash));
+
+      console.log('Available random validators:', availableValidators.length);
+
+      // Shuffle and select up to remainingSlots
+      const shuffled = availableValidators.sort(() => 0.5 - Math.random());
+      randomValidators = shuffled.slice(0, Math.min(remainingSlots, shuffled.length));
+      console.log('Selected random validators:', randomValidators.length);
+    }
+  }
+
+  // Combine cohort members + random validators
+  const allValidators = [...cohortHashes, ...randomValidators];
+  console.log('Total validators:', allValidators.length, '(Cohort:', cohortHashes.length, '+ Random:', randomValidators.length, ')');
+
+  return allValidators;
+}
+
+// Distribute proof to validators
+export async function distributeProofToValidators(
+  activityLogId: number,
+  validatorHashes: string[]
+): Promise<{ ok: boolean; error?: any }> {
+  console.log('=== distributeProofToValidators ===');
+  console.log('Activity Log ID:', activityLogId);
+  console.log('Validators count:', validatorHashes.length);
+
+  // Calculate required approvals (2/3 of total validators, rounded up)
+  const requiredApprovals = Math.ceil((validatorHashes.length * 2) / 3);
+  console.log('Required approvals:', requiredApprovals);
+
+  // Update activity log with validation metadata
+  const { error: updateError } = await supabase
+    .from('activity_log')
+    .update({
+      total_validators: validatorHashes.length,
+      required_approvals: requiredApprovals,
+    })
+    .eq('id', activityLogId);
+
+  if (updateError) {
+    console.error('Failed to update activity log:', updateError);
+    return { ok: false, error: updateError };
+  }
+
+  // Insert distribution records
+  const distributions = validatorHashes.map(hash => ({
+    activity_log_id: activityLogId,
+    validator_hash: hash,
+  }));
+
+  const { error: insertError } = await supabase
+    .from('proof_distribution')
+    .insert(distributions);
+
+  if (insertError) {
+    console.error('Failed to insert distributions:', insertError);
+    return { ok: false, error: insertError };
+  }
+
+  console.log('Proof distributed successfully');
+  return { ok: true };
+}
+
+// Get proofs assigned to a specific user for validation
+export async function getProofsForValidator(validatorHash: string): Promise<ActivityLog[]> {
+  console.log('=== getProofsForValidator ===');
+  console.log('Validator:', validatorHash);
+
+  // Try to get assigned proofs from distribution system
+  const { data, error } = await supabase
+    .from('proof_distribution')
+    .select(`
+      activity_log_id,
+      activity_log (*)
+    `)
+    .eq('validator_hash', validatorHash)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to get proofs for validator:', error);
+    // Fallback to recent proofs if distribution table doesn't exist or error
+    return await getFallbackProofs(validatorHash);
+  }
+
+  if (!data || data.length === 0) {
+    console.log('No assigned proofs found, using fallback');
+    return await getFallbackProofs(validatorHash);
+  }
+
+  // Extract activity logs
+  const activityLogs = data
+    .filter(d => d.activity_log)
+    .map(d => d.activity_log as any as ActivityLog);
+
+  console.log('Found assigned proofs for validation:', activityLogs.length);
+  return activityLogs;
+}
+
+// Fallback: Get recent proofs from activity feed (for users not in distribution system yet)
+async function getFallbackProofs(validatorHash: string): Promise<ActivityLog[]> {
+  console.log('=== getFallbackProofs ===');
+
+  // Get recent wakeup proofs (not from the validator themselves)
+  const { data, error } = await supabase
+    .from('activity_log')
+    .select('*')
+    .eq('typeofmessage', 'wakeup')
+    .neq('user_hash', validatorHash)
+    .order('timestep', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error('Failed to get fallback proofs:', error);
+    return [];
+  }
+
+  console.log('Fallback proofs loaded:', data?.length || 0);
+  return data || [];
+}
+
+// Check and update PBFT validation status
+export async function checkPBFTValidation(activityLogId: number): Promise<{
+  ok: boolean;
+  status: 'pending' | 'approved' | 'rejected';
+  approvals: number;
+  rejections: number;
+  required: number;
+}> {
+  console.log('=== checkPBFTValidation ===');
+  console.log('Activity Log ID:', activityLogId);
+
+  // Get activity log metadata
+  const { data: activityLog, error: logError } = await supabase
+    .from('activity_log')
+    .select('total_validators, required_approvals, validation_status')
+    .eq('id', activityLogId)
+    .single();
+
+  if (logError || !activityLog) {
+    console.error('Failed to get activity log:', logError);
+    return { ok: false, status: 'pending', approvals: 0, rejections: 0, required: 0 };
+  }
+
+  // Get vote counts
+  const { data: votes, error: votesError } = await supabase
+    .from('proof_votes')
+    .select('vote_type')
+    .eq('activity_log_id', activityLogId);
+
+  if (votesError) {
+    console.error('Failed to get votes:', votesError);
+    return { ok: false, status: 'pending', approvals: 0, rejections: 0, required: 0 };
+  }
+
+  const approvals = votes?.filter(v => v.vote_type === 'approve').length || 0;
+  const rejections = votes?.filter(v => v.vote_type === 'reject').length || 0;
+  const required = activityLog.required_approvals || 0;
+
+  console.log('Approvals:', approvals, 'Rejections:', rejections, 'Required:', required);
+
+  // Determine status based on PBFT (2/3 majority)
+  let newStatus: 'pending' | 'approved' | 'rejected' = activityLog.validation_status || 'pending';
+
+  if (approvals >= required) {
+    newStatus = 'approved';
+  } else if (rejections > (activityLog.total_validators || 0) - required) {
+    // If rejections exceed the threshold where approval is impossible
+    newStatus = 'rejected';
+  }
+
+  // Update status if changed
+  if (newStatus !== activityLog.validation_status) {
+    console.log('Updating validation status to:', newStatus);
+    await supabase
+      .from('activity_log')
+      .update({ validation_status: newStatus })
+      .eq('id', activityLogId);
+
+    // Mark all distributions as voted
+    await supabase
+      .from('proof_distribution')
+      .update({ has_voted: true })
+      .eq('activity_log_id', activityLogId);
+  }
+
+  return {
+    ok: true,
+    status: newStatus,
+    approvals,
+    rejections,
+    required,
+  };
 }

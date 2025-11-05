@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { addActivityLog } from './activity_log_utils';
+import { addActivityLogWithId, getRandomValidators, distributeProofToValidators } from './activity_log_utils';
 
 export interface Game {
   id: string;
@@ -172,7 +172,7 @@ export async function joinGame(
   await addGameLog(
     gameId,
     userHash,
-    `Player ${userHash.substring(0, 8)} joined the game`,
+    `Player 0x${userHash.substring(0, 8)} joined the game`,
     'join'
   );
 
@@ -270,7 +270,7 @@ export async function getUserActiveGame(userHash: string): Promise<Game | null> 
   }
 
   // Check if the game itself is active or joinable (not completed)
-  const game = data.games as Game;
+  const game = (data as any).games as Game;
   if (game && (game.status === 'active' || game.status === 'joinable')) {
     return game;
   }
@@ -385,7 +385,7 @@ export async function submitWakeupProof(
   const response = await fetch(photoUri);
   const arrayBuffer = await response.arrayBuffer();
 
-  const { data: uploadData, error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from('wakeup-proofs')
     .upload(fileName, arrayBuffer, {
       contentType: 'image/jpeg',
@@ -450,7 +450,7 @@ export async function submitWakeupProof(
     .insert({
       game_id: gameId,
       user_hash: userHash,
-      message: `${userHash.substring(0, 8)}: ${proofMessage}`,
+      message: `0x${userHash.substring(0, 8)}: ${proofMessage}`,
       event_type: 'proof',
       photo_url: publicUrl,
     });
@@ -468,7 +468,7 @@ export async function submitWakeupProof(
   console.log('Activity message:', activityMessage);
   console.log('Photo URL:', publicUrl);
 
-  const activityAdded = await addActivityLog(
+  const activityResult = await addActivityLogWithId(
     userHash,
     userHash,
     activityMessage,
@@ -476,10 +476,34 @@ export async function submitWakeupProof(
     publicUrl
   );
 
-  if (!activityAdded) {
+  if (!activityResult.ok || !activityResult.id) {
     console.error('⚠️ WARNING: Failed to add to activity feed! Check RLS on activity_log table');
   } else {
-    console.log('✅ Successfully added to activity feed!');
+    console.log('✅ Successfully added to activity feed! ID:', activityResult.id);
+
+    // ========== PBFT PROOF DISTRIBUTION ==========
+    console.log('=== Starting PBFT proof distribution ===');
+
+    // Get random validators (up to 100, excluding cohort members)
+    const validators = await getRandomValidators(userHash, gameId, 100);
+    console.log('Selected validators:', validators.length);
+
+    if (validators.length > 0) {
+      // Distribute proof to validators
+      const distributionResult = await distributeProofToValidators(
+        activityResult.id,
+        validators
+      );
+
+      if (distributionResult.ok) {
+        console.log('✅ Proof distributed to', validators.length, 'validators');
+        console.log('Required approvals:', Math.ceil((validators.length * 2) / 3));
+      } else {
+        console.error('⚠️ Failed to distribute proof:', distributionResult.error);
+      }
+    } else {
+      console.warn('⚠️ No validators available for proof distribution');
+    }
   }
 
   console.log('Proof submitted successfully!');

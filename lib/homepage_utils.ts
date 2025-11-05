@@ -22,7 +22,7 @@ export async function getStats(userHash: string): Promise<UserStats> {
 
   const sleepHistory = data?.sleep_history ?? [0];
   const sleepAverage = sleepHistory.length > 0
-    ? sleepHistory.reduce((sum, val) => sum + val, 0) / sleepHistory.length
+    ? sleepHistory.reduce((sum: number, val: number) => sum + val, 0) / sleepHistory.length
     : 0;
 
   return {
@@ -67,6 +67,32 @@ export async function addSleep(userHash: string, hours: number): Promise<{ ok: b
   console.log('userHash:', userHash);
   console.log('hours to add:', hours);
 
+  // Check if user has already logged sleep today
+  const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
+  console.log('Today:', today);
+
+  const { data: existingLog, error: checkError } = await supabase
+    .from('home_page_top')
+    .select('last_sleep_log_date')
+    .eq('user_hash', userHash)
+    .maybeSingle();
+
+  if (checkError) {
+    console.error('Failed to check last sleep log date:', checkError);
+    return { ok: false, error: checkError };
+  }
+
+  const lastLogDate = existingLog?.last_sleep_log_date;
+  console.log('Last sleep log date:', lastLogDate);
+
+  if (lastLogDate === today) {
+    console.log('User already logged sleep today!');
+    return {
+      ok: false,
+      error: { message: 'You have already logged sleep today. Come back tomorrow!' }
+    };
+  }
+
   const current = await getStats(userHash);
   console.log('Current stats:', current);
 
@@ -82,6 +108,7 @@ export async function addSleep(userHash: string, hours: number): Promise<{ ok: b
     .update({
       sleep_logged: newSleep,
       sleep_history: newHistory,
+      last_sleep_log_date: today,
     })
     .eq('user_hash', userHash)
     .select();
@@ -101,6 +128,25 @@ export async function addSleep(userHash: string, hours: number): Promise<{ ok: b
 
   console.log('Sleep added successfully!');
   return { ok: true };
+}
+
+// Check if user can log sleep today (returns true if they haven't logged yet today)
+export async function canLogSleepToday(userHash: string): Promise<boolean> {
+  const today = new Date().toISOString().split('T')[0];
+
+  const { data, error } = await supabase
+    .from('home_page_top')
+    .select('last_sleep_log_date')
+    .eq('user_hash', userHash)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Failed to check sleep log status:', error);
+    return true; // Default to allowing if error
+  }
+
+  const lastLogDate = data?.last_sleep_log_date;
+  return lastLogDate !== today;
 }
 
 export async function addProfit(userHash: string, profit: number): Promise<{ ok: boolean; error?: any }> {

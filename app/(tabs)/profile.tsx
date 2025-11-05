@@ -167,9 +167,12 @@ export default function ProfileScreen() {
         imageStyle={{ resizeMode: "cover" }}
       >
         <SafeAreaView style={styles.container}>
-          <View style={[styles.scrollWrapper, {height: Dimensions.get("window").height - 50}]}>
-            <ScrollView style={styles.scrollContent}>
-              <View style={styles.content}>
+          <ScrollView
+            style={styles.scrollContent}
+            contentContainerStyle={styles.scrollContentContainer}
+            showsVerticalScrollIndicator={true}
+          >
+            <View style={styles.content}>
 
                 {/* Profile Header */}
                 <View style={styles.profileHeader}>
@@ -229,9 +232,8 @@ export default function ProfileScreen() {
                   )}
                 </TouchableOpacity>
 
-              </View>
-            </ScrollView>
-          </View>
+            </View>
+          </ScrollView>
         </SafeAreaView>
       </ImageBackground>
 
@@ -252,18 +254,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollWrapper: {
-    overflow: 'hidden'
-  },
   scrollContent: {
-    flexGrow: 1,
+    flex: 1,
+  },
+  scrollContentContainer: {
     padding: 10,
     paddingTop: 100,
-    overflow: 'hidden',
+    paddingBottom: 20,
   },
   content: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 130,
   },
   loadingContainer: {
     flex: 1,
