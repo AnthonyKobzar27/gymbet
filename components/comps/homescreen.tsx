@@ -5,10 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle, Rect } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStats, addSleep } from '@/lib/homepage_utils';
-import { getActivityFeed, subscribeToActivityFeed } from '@/lib/activity_log_utils';
+import { getActivityFeed, subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes } from '@/lib/activity_log_utils';
 import { getUserActiveGame } from '@/lib/game_utils';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import { UserAvatar } from '@/components/Avatar';
 
 const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
   const width = 180;
@@ -77,6 +78,9 @@ interface FeedItem {
   timestamp: string;
   type: 'wakeup' | 'comment' | 'bet' | 'win';
   image?: string | null;
+  approvals?: number;
+  rejections?: number;
+  userVote?: 'approve' | 'reject' | null;
 }
 
 // Purely presentational home screen – no navigation/auth logic, just UI
@@ -144,14 +148,33 @@ export default function HomeScreen() {
 
   const loadFeed = async () => {
     const logs = await getActivityFeed();
-    const items: FeedItem[] = logs.map(log => ({
-      id: log.id.toString(),
-      userHash: log.user_hash,
-      action: log.message,
-      timestamp: formatTimestamp(log.timestep),
-      type: log.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
-      image: log.image,
-    }));
+
+    // Get activity IDs for fetching votes
+    const activityIds = logs.map(log => log.id);
+
+    // Load vote counts and user votes in parallel
+    const [voteCounts, userVotesMap] = await Promise.all([
+      getVoteCounts(activityIds),
+      userHash ? getUserVotes(activityIds, userHash) : Promise.resolve(new Map()),
+    ]);
+
+    const items: FeedItem[] = logs.map(log => {
+      const counts = voteCounts.get(log.id) || { approvals: 0, rejections: 0 };
+      const userVote = userVotesMap.get(log.id) || null;
+
+      return {
+        id: log.id.toString(),
+        userHash: log.user_hash,
+        action: log.message,
+        timestamp: formatTimestamp(log.timestep),
+        type: log.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+        image: log.image,
+        approvals: counts.approvals,
+        rejections: counts.rejections,
+        userVote: userVote,
+      };
+    });
+
     setFeedItems(items);
   };
 
@@ -180,6 +203,80 @@ export default function HomeScreen() {
     } else {
       console.error('Failed to add sleep:', result.error);
       Alert.alert('Error', `Failed to add sleep: ${result.error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleVote = async (activityId: string, voteType: 'approve' | 'reject') => {
+    if (!userHash) {
+      Alert.alert('Error', 'Please log in to vote');
+      return;
+    }
+
+    const activityIdNum = parseInt(activityId);
+    const currentItem = feedItems.find((item) => item.id === activityId);
+    const isTogglingSameVote = currentItem?.userVote === voteType;
+
+    // Update the feed item locally for immediate feedback
+    setFeedItems((prev) =>
+      prev.map((item) => {
+        if (item.id === activityId) {
+          const wasApproved = item.userVote === 'approve';
+          const wasRejected = item.userVote === 'reject';
+          const isApproving = voteType === 'approve';
+          const isRejecting = voteType === 'reject';
+
+          let newApprovals = item.approvals || 0;
+          let newRejections = item.rejections || 0;
+
+          // Remove previous vote if exists
+          if (wasApproved) newApprovals--;
+          if (wasRejected) newRejections--;
+
+          // Add new vote if different from previous
+          if (item.userVote === voteType) {
+            // Toggling off the same vote
+            return {
+              ...item,
+              userVote: null,
+              approvals: newApprovals,
+              rejections: newRejections,
+            };
+          } else {
+            // Switching to new vote
+            if (isApproving) newApprovals++;
+            if (isRejecting) newRejections++;
+
+            return {
+              ...item,
+              userVote: voteType,
+              approvals: newApprovals,
+              rejections: newRejections,
+            };
+          }
+        }
+        return item;
+      })
+    );
+
+    // Persist vote to database
+    try {
+      if (isTogglingSameVote) {
+        // Remove the vote
+        const result = await removeVote(activityIdNum, userHash);
+        if (!result.ok) {
+          throw new Error('Failed to remove vote');
+        }
+      } else {
+        // Add or update the vote
+        const result = await voteOnProof(activityIdNum, userHash, voteType);
+        if (!result.ok) {
+          throw new Error('Failed to submit vote');
+        }
+      }
+    } catch (error) {
+      console.error('Error voting:', error);
+      // Revert the optimistic update on error
+      loadFeed();
     }
   };
   
@@ -244,10 +341,14 @@ export default function HomeScreen() {
                   <View key={item.id} style={styles.feedItem}>
                     <View style={styles.feedHeader}>
                       <View style={styles.feedUserRow}>
-                        <Text style={styles.feedEmoji}></Text>
-                        <Text style={styles.feedUser}>{item.userHash}</Text>
+                        <UserAvatar hash={item.userHash} size={32} />
+                        <View style={styles.feedUserInfo}>
+                          <Text style={styles.feedUser}>
+                            {item.userHash.substring(0, 8)}...
+                          </Text>
+                          <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
+                        </View>
                       </View>
-                      <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
                     </View>
                     <Text style={styles.feedAction}>{item.action}</Text>
                     {item.image && (
@@ -256,6 +357,40 @@ export default function HomeScreen() {
                         style={styles.feedImage}
                         resizeMode="cover"
                       />
+                    )}
+                    {item.type === 'wakeup' && (
+                      <View style={styles.voteContainer}>
+                        <TouchableOpacity
+                          style={[
+                            styles.voteButton,
+                            styles.approveButton,
+                            item.userVote === 'approve' && styles.voteButtonActive
+                          ]}
+                          onPress={() => handleVote(item.id, 'approve')}
+                        >
+                          <Text style={[
+                            styles.voteButtonText,
+                            item.userVote === 'approve' && styles.voteButtonTextActive
+                          ]}>
+                            ✓ ACCEPT {item.approvals ? `(${item.approvals})` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.voteButton,
+                            styles.rejectButton,
+                            item.userVote === 'reject' && styles.voteButtonActive
+                          ]}
+                          onPress={() => handleVote(item.id, 'reject')}
+                        >
+                          <Text style={[
+                            styles.voteButtonText,
+                            item.userVote === 'reject' && styles.voteButtonTextActive
+                          ]}>
+                            ✕ REJECT {item.rejections ? `(${item.rejections})` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </View>
                 ))
@@ -412,15 +547,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
+  feedUserInfo: {
+    marginLeft: 10,
+    flex: 1,
+  },
   feedEmoji: {
     fontSize: 14,
     marginRight: 6,
   },
   feedUser: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Inter_700Bold',
-    color: '#666',
+    color: '#000',
     letterSpacing: 0.3,
+    marginBottom: 2,
   },
   feedTimestamp: {
     fontSize: 9,
@@ -440,6 +580,42 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderWidth: 2,
     borderColor: '#000',
+  },
+  voteContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  voteButton: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: '#000',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  approveButton: {
+    backgroundColor: '#FFF',
+  },
+  rejectButton: {
+    backgroundColor: '#FFF',
+  },
+  voteButtonActive: {
+    backgroundColor: '#000',
+  },
+  voteButtonText: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+  voteButtonTextActive: {
+    color: '#FFF',
   },
   viewMoreButton: {
     marginTop: 8,
