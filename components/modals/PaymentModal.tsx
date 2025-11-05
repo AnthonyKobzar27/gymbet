@@ -14,7 +14,7 @@ import {
   Dimensions
 } from 'react-native';
 import { CardField, useStripe } from '@stripe/stripe-react-native';
-//import { addTransaction, createPaymentIntent } from '../../services/stripe';
+import { createPaymentIntent, addTransaction } from '../../lib/stripe_utils';
 import { getBalance, deposit, withdraw } from '../../lib/transaction_utils';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -108,7 +108,8 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
           await addTransaction({
             type: 'deposit',
             amount: paymentAmount,
-            description: `Deposited $${paymentAmount.toFixed(2)}`
+            description: `Deposited $${paymentAmount.toFixed(2)}`,
+            userHash: userHash
           });
 
           Alert.alert('Success', `$${paymentAmount.toFixed(2)} deposited successfully!`);
@@ -127,7 +128,8 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
         await addTransaction({
           type: 'withdrawal',
           amount: -paymentAmount,
-          description: `Withdrew $${paymentAmount.toFixed(2)}`
+          description: `Withdrew $${paymentAmount.toFixed(2)}`,
+          userHash: userHash
         });
 
         Alert.alert('Success', `$${paymentAmount.toFixed(2)} withdrawal requested. Funds will be available in 1-3 business days.`);
@@ -150,8 +152,9 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
       visible={visible}
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.modalTitle}>
               {type === 'deposit' ? 'DEPOSIT FUNDS' : 'WITHDRAW FUNDS'}
@@ -231,8 +234,9 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
               </Text>
             )}
           </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 }
@@ -367,5 +371,7 @@ const styles = StyleSheet.create({
     borderColor: '#000000',
     borderWidth: 3,
     borderRadius: 0,
+    textColor: '#000000',
+    placeholderColor: '#999999',
   } as any, // CardField has its own style properties
 });
