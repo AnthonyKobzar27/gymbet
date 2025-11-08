@@ -1,7 +1,43 @@
 import { supabase } from './supabase';
 
 /**
- * Create a Stripe Payment Intent on the backend
+ * Create a Stripe Checkout Session
+ * Opens a hosted Stripe payment page
+ * Amount should be in dollars (e.g., 10 for $10)
+ */
+export async function createCheckoutSession(amount: number, userHash: string): Promise<string> {
+  console.log('=== createCheckoutSession ===');
+  console.log('Amount:', amount);
+  console.log('User hash:', userHash);
+
+  try {
+    // Call Supabase Edge Function to create checkout session
+    const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      body: {
+        amount: amount, // Amount in dollars, edge function will convert to cents
+        userHash: userHash
+      },
+    });
+
+    if (error) {
+      console.error('Failed to create checkout session:', error);
+      throw new Error(error.message || 'Failed to create checkout session');
+    }
+
+    if (!data || !data.url) {
+      throw new Error('No checkout URL returned from server');
+    }
+
+    console.log('Checkout session created successfully');
+    return data.url;
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create a Stripe Payment Intent on the backend (DEPRECATED - use createCheckoutSession)
  * Amount should be in cents (e.g., $10 = 1000 cents)
  */
 export async function createPaymentIntent(amountInCents: number): Promise<string> {

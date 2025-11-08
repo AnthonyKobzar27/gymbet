@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,17 +8,14 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Animated,
   Keyboard,
   TouchableWithoutFeedback,
-  Dimensions
+  Linking
 } from 'react-native';
-import { CardField, useStripe } from '@stripe/stripe-react-native';
-import { createPaymentIntent, addTransaction } from '../../lib/stripe_utils';
+import * as WebBrowser from 'expo-web-browser';
+import { createCheckoutSession, addTransaction } from '../../lib/stripe_utils';
 import { getBalance, deposit, withdraw } from '../../lib/transaction_utils';
 import { useAuth } from '../../contexts/AuthContext';
-
-const { width } = Dimensions.get('window');
 
 interface PaymentModalProps {
   visible: boolean;
@@ -30,8 +27,6 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
   const [amount, setAmount] = useState('');
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [cardComplete, setCardComplete] = useState(false);
-  const { confirmPayment: stripeConfirmPayment } = useStripe();
   const { getUserProfile } = useAuth();
   const [userHash, setUserHash] = useState<string | null>(null);
 
@@ -81,44 +76,30 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
     try {
       if (type === 'deposit') {
-        if (!cardComplete) {
-          Alert.alert('Error', 'Please complete your card details');
-          setLoading(false);
-          return;
-        }
+        // Create Stripe Checkout Session
+        const sessionUrl = await createCheckoutSession(paymentAmount, userHash);
 
-        const clientSecret = await createPaymentIntent(paymentAmount * 100);
+        // Open Stripe Checkout in browser
+        const result = await WebBrowser.openBrowserAsync(sessionUrl);
 
-        const { error, paymentIntent } = await stripeConfirmPayment(clientSecret, {
-          paymentMethodType: 'Card',
-        });
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        if (paymentIntent?.status === 'Succeeded') {
-          // Payment succeeded - update Supabase balance
-          const result = await deposit(userHash, paymentAmount);
-
-          if (!result.ok) {
-            throw new Error('Failed to update balance');
-          }
-
-          await addTransaction({
-            type: 'deposit',
-            amount: paymentAmount,
-            description: `Deposited $${paymentAmount.toFixed(2)}`,
-            userHash: userHash
-          });
-
-          Alert.alert('Success', `$${paymentAmount.toFixed(2)} deposited successfully!`);
+        // Note: The actual payment confirmation will happen via webhook
+        // For now, we'll just close the modal and let the user know
+        if (result.type === 'cancel' || result.type === 'dismiss') {
+          Alert.alert('Cancelled', 'Payment was cancelled');
+        } else {
+          Alert.alert(
+            'Payment Processing',
+            'Your payment is being processed. Your balance will update shortly.'
+          );
           setAmount('');
-          setCardComplete(false);
-          loadBalance(userHash);
+          onClose();
+          // Reload balance after a short delay
+          setTimeout(() => {
+            if (userHash) loadBalance(userHash);
+          }, 2000);
         }
       } else {
-        // Handle withdrawal
+        // Handle withdrawal (same as before)
         const result = await withdraw(userHash, paymentAmount);
 
         if (!result.ok) {
@@ -192,24 +173,9 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
           </View>
 
           {type === 'deposit' && (
-            <>
-              <View style={styles.cardFieldContainer}>
-                <CardField
-                  postalCodeEnabled={true}
-                  placeholders={{
-                    number: '4242 4242 4242 4242',
-                  }}
-                  cardStyle={styles.cardField}
-                  style={styles.cardFieldInput}
-                  onCardChange={(cardDetails) => {
-                    setCardComplete(cardDetails.complete);
-                  }}
-                />
-              </View>
-              <Text style={styles.disclaimer}>
-                Powered by Stripe
-              </Text>
-            </>
+            <Text style={styles.disclaimer}>
+              You'll be redirected to secure Stripe checkout
+            </Text>
           )}
 
           {type === 'withdraw' && (
@@ -220,17 +186,17 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
           <TouchableOpacity
             style={[
-              styles.paymentButton, 
-              (loading || (type === 'deposit' && !cardComplete)) && styles.disabledButton
+              styles.paymentButton,
+              loading && styles.disabledButton
             ]}
             onPress={handlePayment}
-            disabled={loading || (type === 'deposit' && !cardComplete)}
+            disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
               <Text style={styles.paymentButtonText}>
-                {type === 'deposit' ? 'DEPOSIT NOW' : 'REQUEST WITHDRAWAL'}
+                {type === 'deposit' ? 'OPEN STRIPE CHECKOUT' : 'REQUEST WITHDRAWAL'}
               </Text>
             )}
           </TouchableOpacity>
@@ -358,20 +324,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 1,
   },
-  cardFieldContainer: {
-    width: '100%',
-    marginBottom: 16,
-  },
-  cardFieldInput: {
-    width: '100%',
-    height: 50,
-  },
-  cardField: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#000000',
-    borderWidth: 3,
-    borderRadius: 0,
-    textColor: '#000000',
-    placeholderColor: '#999999',
-  } as any, // CardField has its own style properties
 });

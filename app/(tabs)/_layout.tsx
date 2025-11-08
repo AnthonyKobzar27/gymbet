@@ -4,13 +4,14 @@ import { Tabs } from 'expo-router';
 import { Modal, TouchableOpacity, Text, StyleSheet, View, Platform} from 'react-native';
 // import { useWallet } from '../providers/WalletConnectProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import PaymentModal from '@/components/modals/PaymentModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import { Image } from 'react-native';
 import LoginModal from '@/components/modals/LoginModal';
+import DepositAmountModal from '@/components/modals/DepositAmountModal';
 import { router } from 'expo-router';
 import { getBalance } from '@/lib/transaction_utils';
+import { useFocusEffect } from '@react-navigation/native';
 
 
 // You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
@@ -23,10 +24,10 @@ function TabBarIcon(props: {
 
 export function HeaderRight() {
   const { user, signOut, getUserProfile } = useAuth();
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [balance, setBalance] = useState(0);
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
+  const [depositModalVisible, setDepositModalVisible] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -44,6 +45,17 @@ export function HeaderRight() {
     }
   }, [userProfile]);
 
+  // Auto-reload balance every 3 seconds when user is logged in
+  useEffect(() => {
+    if (!userProfile?.hash) return;
+
+    const interval = setInterval(() => {
+      loadBalance();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [userProfile]);
+
   const loadUserProfile = async () => {
     if (user) {
       const profile = await getUserProfile();
@@ -53,7 +65,9 @@ export function HeaderRight() {
 
   const loadBalance = async () => {
     if (userProfile?.hash) {
+      console.log('=== Loading balance for user:', userProfile.hash);
       const newBalance = await getBalance(userProfile.hash);
+      console.log('=== Balance loaded:', newBalance);
       setBalance(newBalance);
     }
   };
@@ -62,18 +76,36 @@ export function HeaderRight() {
     router.push('/profile');
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (!user) {
       setLoginModalVisible(true);
       return;
     }
-    setPaymentModalVisible(true);
+
+    // Show deposit amount selection modal
+    setDepositModalVisible(true);
   };
 
-  const handlePaymentModalClose = () => {
-    setPaymentModalVisible(false);
-    // Reload balance after payment modal closes
-    loadBalance();
+  const handleDepositAmountSelected = async (amount: number) => {
+    if (!userProfile?.hash) return;
+
+    try {
+      const { createCheckoutSession } = await import('@/lib/stripe_utils');
+      const WebBrowser = await import('expo-web-browser');
+
+      // Create checkout session with selected amount
+      const sessionUrl = await createCheckoutSession(amount, userProfile.hash);
+
+      // Open Stripe Checkout
+      await WebBrowser.openBrowserAsync(sessionUrl);
+
+      // Reload balance after user returns
+      setTimeout(() => {
+        loadBalance();
+      }, 2000);
+    } catch (error) {
+      console.error('Error opening Stripe Checkout:', error);
+    }
   };
 
   return (
@@ -108,15 +140,15 @@ export function HeaderRight() {
         )}
       </TouchableOpacity>
 
-      <PaymentModal
-        visible={paymentModalVisible}
-        onClose={handlePaymentModalClose}
-        type="deposit"
+      <LoginModal
+        visible={loginModalVisible}
+        onClose={() => setLoginModalVisible(false)}
       />
-      
-      <LoginModal 
-        visible={loginModalVisible} 
-        onClose={() => setLoginModalVisible(false)} 
+
+      <DepositAmountModal
+        visible={depositModalVisible}
+        onClose={() => setDepositModalVisible(false)}
+        onSelectAmount={handleDepositAmountSelected}
       />
     </View>
   );

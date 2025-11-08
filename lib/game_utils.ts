@@ -135,23 +135,30 @@ export async function joinGame(
 
   // Check user balance
   const userBalance = await getBalance(userHash);
+  console.log('User balance:', userBalance, 'Game stake:', game.stake);
+
   if (userBalance < game.stake) {
-    return { ok: false, error: { message: `Insufficient balance. Need $${game.stake.toFixed(2)}` } };
+    return { ok: false, error: { message: `Insufficient balance. Need $${game.stake.toFixed(2)}, but you have $${userBalance.toFixed(2)}` } };
   }
 
   // Deduct stake from balance
+  console.log('Withdrawing stake:', game.stake);
   const withdrawResult = await withdraw(userHash, game.stake);
+  console.log('Withdraw result:', withdrawResult);
+
   if (!withdrawResult.ok) {
-    return { ok: false, error: { message: 'Failed to process stake payment' } };
+    return { ok: false, error: { message: 'Failed to process stake payment: ' + (withdrawResult.error?.message || 'Unknown error') } };
   }
 
   // Record transaction
-  await addTransaction({
+  console.log('Recording transaction...');
+  const txResult = await addTransaction({
     type: 'stake',
     amount: -game.stake,
     description: `Staked $${game.stake.toFixed(2)} for game ${gameId}`,
     userHash: userHash
   });
+  console.log('Transaction recorded:', txResult);
 
   // Add player to game
   const { error: insertError } = await supabase
@@ -209,6 +216,101 @@ export async function joinGame(
   }
 
   return { ok: true };
+}
+
+/**
+ * Leave a game and get refunded (only works before game starts)
+ */
+export async function leaveGame(
+  gameId: string,
+  userHash: string
+): Promise<{ ok: boolean; error?: any; refunded?: number }> {
+  console.log('=== leaveGame ===');
+  console.log('Game ID:', gameId);
+  console.log('User hash:', userHash);
+
+  // Get game details
+  const { data: game } = await supabase
+    .from('games')
+    .select('status, stake, player_count')
+    .eq('id', gameId)
+    .single();
+
+  if (!game) {
+    return { ok: false, error: { message: 'Game not found' } };
+  }
+
+  // Can only leave if game hasn't started
+  if (game.status !== 'joinable') {
+    return { ok: false, error: { message: 'Cannot leave a game that has already started' } };
+  }
+
+  // Check if user is in the game
+  const { data: player } = await supabase
+    .from('game_players')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('user_hash', userHash)
+    .maybeSingle();
+
+  if (!player) {
+    return { ok: false, error: { message: 'You are not in this game' } };
+  }
+
+  // Refund the stake
+  console.log('Refunding stake:', game.stake, 'to user:', userHash);
+  const refundResult = await deposit(userHash, game.stake);
+  console.log('Refund result:', refundResult);
+
+  if (!refundResult.ok) {
+    return { ok: false, error: { message: 'Failed to refund stake: ' + (refundResult.error?.message || 'Unknown error') } };
+  }
+
+  // Record refund transaction
+  console.log('Recording refund transaction...');
+  const txResult = await addTransaction({
+    type: 'deposit',
+    amount: game.stake,
+    description: `Refund from leaving game ${gameId}`,
+    userHash: userHash
+  });
+  console.log('Refund transaction recorded:', txResult);
+
+  // Remove player from game
+  const { error: deleteError } = await supabase
+    .from('game_players')
+    .delete()
+    .eq('game_id', gameId)
+    .eq('user_hash', userHash);
+
+  if (deleteError) {
+    console.error('Failed to remove player:', deleteError);
+    return { ok: false, error: deleteError };
+  }
+
+  // Decrement player count
+  const { error: updateError } = await supabase
+    .from('games')
+    .update({
+      player_count: game.player_count - 1,
+    })
+    .eq('id', gameId);
+
+  if (updateError) {
+    console.error('Failed to update player count:', updateError);
+    return { ok: false, error: updateError };
+  }
+
+  // Add log entry
+  await addGameLog(
+    gameId,
+    userHash,
+    `Player 0x${userHash.substring(0, 8)} left the game`,
+    'join'
+  );
+
+  console.log('Successfully left game and refunded:', game.stake);
+  return { ok: true, refunded: game.stake };
 }
 
 /**

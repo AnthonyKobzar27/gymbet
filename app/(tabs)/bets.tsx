@@ -11,6 +11,7 @@ import {
   getUserActiveGame,
   createGame,
   joinGame,
+  leaveGame,
   getGameDetails,
   submitWakeupProof,
   sendChatMessage,
@@ -18,6 +19,7 @@ import {
   Game,
   GameWithPlayers,
 } from '@/lib/game_utils';
+import { setupGameNotifications, clearGameNotifications } from '@/lib/notification_utils';
 
 type TabType = 'players' | 'log';
 
@@ -147,17 +149,60 @@ export default function BetsScreen() {
       return;
     }
 
+    // Get game details to get wake-up time
+    const gameDetails = await getGameDetails(gameId);
+    if (!gameDetails) {
+      Alert.alert('Error', 'Could not load game details');
+      return;
+    }
+
     console.log('Joining game...');
     const result = await joinGame(gameId, userHash);
 
     if (result.ok) {
       console.log('Successfully joined game:', gameId);
-      Alert.alert('Success', 'Successfully joined the game!');
+
+      // Set up notifications for this game
+      console.log('Setting up notifications for wake time:', gameDetails.wake_up_time);
+      await setupGameNotifications(gameDetails.wake_up_time);
+
+      Alert.alert(
+        'Success!',
+        'Successfully joined the game! Your stake has been deducted.\n\n📱 Notifications enabled:\n• Daily reminder at 9 PM\n• Wake-up reminder 1 hour before'
+      );
       loadGames();
     } else {
       console.error('Failed to join game:', result.error);
       Alert.alert('Error', `Failed to join game: ${result.error?.message || 'Unknown error'}`);
     }
+  };
+
+  const handleLeaveGame = async () => {
+    if (!activeGame || !userHash) return;
+
+    console.log('=== handleLeaveGame ===');
+
+    Alert.alert(
+      'Leave Game?',
+      `Are you sure you want to leave? You will get your $${activeGame.stake} stake refunded.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await leaveGame(activeGame.id, userHash);
+
+            if (result.ok) {
+              Alert.alert('Success', `You left the game and received a $${result.refunded} refund!`);
+              loadGames();
+            } else {
+              Alert.alert('Error', `Failed to leave game: ${result.error?.message || 'Unknown error'}`);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleProofSubmit = async (photoUri: string, caption: string) => {
@@ -369,19 +414,35 @@ export default function BetsScreen() {
         <TouchableOpacity
           style={[
             styles.submitProofButton,
-            hasSubmittedToday && styles.submitProofButtonDisabled
+            (hasSubmittedToday || activeGame.status !== 'active') && styles.submitProofButtonDisabled
           ]}
           onPress={() => {
-            if (!hasSubmittedToday) {
+            if (!hasSubmittedToday && activeGame.status === 'active') {
               setProofModalVisible(true);
             }
           }}
-          disabled={hasSubmittedToday}
+          disabled={hasSubmittedToday || activeGame.status !== 'active'}
         >
           <Text style={styles.submitProofButtonText}>
-            {hasSubmittedToday ? 'PROOF SUBMITTED TODAY ✓' : 'SUBMIT WAKEUP PROOF'}
+            {activeGame.status !== 'active'
+              ? `WAITING FOR PLAYERS... (${activeGame.players.length}/8)`
+              : hasSubmittedToday
+                ? 'PROOF SUBMITTED TODAY ✓'
+                : 'SUBMIT WAKEUP PROOF'}
           </Text>
         </TouchableOpacity>
+
+        {/* Leave Game Button - Only show if game hasn't started */}
+        {activeGame.status === 'joinable' && (
+          <TouchableOpacity
+            style={styles.leaveGameButton}
+            onPress={handleLeaveGame}
+          >
+            <Text style={styles.leaveGameButtonText}>
+              LEAVE GAME
+            </Text>
+          </TouchableOpacity>
+        )}
       </>
     );
   };
@@ -943,6 +1004,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'Inter_800ExtraBold',
     fontSize: 14,
+    letterSpacing: 1,
+  },
+  leaveGameButton: {
+    backgroundColor: '#FF4444',
+    borderWidth: 4,
+    borderColor: '#000',
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  leaveGameButtonText: {
+    color: '#FFF',
+    textAlign: 'center',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 13,
     letterSpacing: 1,
   },
   chatInputContainer: {
