@@ -1,36 +1,38 @@
 import { supabase } from '../lib/supabase';
 
 export interface UserStats {
-  sleepLogged: number;
-  sleepAverage: number;
+  workoutLogged: number;
+  workoutAverage: number;
   profitMade: number;
-  sleepHistory: number[];
+  workoutHistory: number[];
   profitHistory: number[];
+  currentSplitDay?: string;
 }
 
 export async function getStats(userHash: string): Promise<UserStats> {
   const { data, error } = await supabase
     .from('home_page_top')
-    .select('sleep_logged, profit_made, sleep_history, profit_history')
+    .select('workout_logged, profit_made, workout_history, profit_history, current_split_day')
     .eq('user_hash', userHash)
     .maybeSingle();
 
   if (error) {
     console.error('failed to get user stats', error);
-    return { sleepLogged: 0, sleepAverage: 0, profitMade: 0, sleepHistory: [0], profitHistory: [0] };
+    return { workoutLogged: 0, workoutAverage: 0, profitMade: 0, workoutHistory: [0], profitHistory: [0], currentSplitDay: 'No split set' };
   }
 
-  const sleepHistory = data?.sleep_history ?? [0];
-  const sleepAverage = sleepHistory.length > 0
-    ? sleepHistory.reduce((sum: number, val: number) => sum + val, 0) / sleepHistory.length
+  const workoutHistory = data?.workout_history ?? [0];
+  const workoutAverage = workoutHistory.length > 0
+    ? workoutHistory.reduce((sum: number, val: number) => sum + val, 0) / workoutHistory.length
     : 0;
 
   return {
-    sleepLogged: data?.sleep_logged ?? 0,
-    sleepAverage: Math.round(sleepAverage * 10) / 10, // Round to 1 decimal place
+    workoutLogged: data?.workout_logged ?? 0,
+    workoutAverage: Math.round(workoutAverage * 10) / 10, // Round to 1 decimal place
     profitMade: data?.profit_made ?? 0,
-    sleepHistory: sleepHistory,
+    workoutHistory: workoutHistory,
     profitHistory: data?.profit_history ?? [0],
+    currentSplitDay: data?.current_split_day ?? 'No split set',
   };
 }
 
@@ -55,10 +57,11 @@ export async function initStats(userHash: string): Promise<boolean> {
       .from('home_page_top')
       .insert({
         user_hash: userHash,
-        sleep_logged: 0,
+        workout_logged: 0,
         profit_made: 0,
-        sleep_history: [0],
-        profit_history: [0]
+        workout_history: [0],
+        profit_history: [0],
+        current_split_day: 'No split set'
       })
       .select();
 
@@ -77,53 +80,54 @@ export async function initStats(userHash: string): Promise<boolean> {
   return true;
 }
 
-export async function addSleep(userHash: string, hours: number): Promise<{ ok: boolean; error?: any }> {
-  console.log('=== addSleep called ===');
+export async function addWorkout(userHash: string, splitDay: string): Promise<{ ok: boolean; error?: any }> {
+  console.log('=== addWorkout called ===');
   console.log('userHash:', userHash);
-  console.log('hours to add:', hours);
+  console.log('split day:', splitDay);
 
-  // Check if user has already logged sleep today
+  // Check if user has already logged workout today
   const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
   console.log('Today:', today);
 
   const { data: existingLog, error: checkError } = await supabase
     .from('home_page_top')
-    .select('last_sleep_log_date')
+    .select('last_workout_log_date')
     .eq('user_hash', userHash)
     .maybeSingle();
 
   if (checkError) {
-    console.error('Failed to check last sleep log date:', checkError);
+    console.error('Failed to check last workout log date:', checkError);
     return { ok: false, error: checkError };
   }
 
-  const lastLogDate = existingLog?.last_sleep_log_date;
-  console.log('Last sleep log date:', lastLogDate);
+  const lastLogDate = existingLog?.last_workout_log_date;
+  console.log('Last workout log date:', lastLogDate);
 
   if (lastLogDate === today) {
-    console.log('User already logged sleep today!');
+    console.log('User already logged workout today!');
     return {
       ok: false,
-      error: { message: 'You have already logged sleep today. Come back tomorrow!' }
+      error: { message: 'You have already logged workout today. Come back tomorrow!' }
     };
   }
 
   const current = await getStats(userHash);
   console.log('Current stats:', current);
 
-  const newSleep = current.sleepLogged + Math.abs(hours);
-  console.log('New sleep value:', newSleep);
+  const newWorkout = current.workoutLogged + 1;
+  console.log('New workout count:', newWorkout);
 
-  // Update history - keep last 7 entries
-  const newHistory = [...current.sleepHistory, Math.abs(hours)].slice(-7);
-  console.log('New sleep history:', newHistory);
+  // Update history - keep last 7 entries (1 for completed, 0 for skipped)
+  const newHistory = [...current.workoutHistory, 1].slice(-7);
+  console.log('New workout history:', newHistory);
 
   const { data, error } = await supabase
     .from('home_page_top')
     .update({
-      sleep_logged: newSleep,
-      sleep_history: newHistory,
-      last_sleep_log_date: today,
+      workout_logged: newWorkout,
+      workout_history: newHistory,
+      last_workout_log_date: today,
+      current_split_day: splitDay,
     })
     .eq('user_hash', userHash)
     .select();
@@ -132,7 +136,7 @@ export async function addSleep(userHash: string, hours: number): Promise<{ ok: b
   console.log('Update result - error:', error);
 
   if (error) {
-    console.error('Failed to add sleep:', error);
+    console.error('Failed to add workout:', error);
     return { ok: false, error };
   }
 
@@ -141,26 +145,26 @@ export async function addSleep(userHash: string, hours: number): Promise<{ ok: b
     return { ok: false, error: { message: 'No rows updated. Check user_hash match.' } };
   }
 
-  console.log('Sleep added successfully!');
+  console.log('Workout added successfully!');
   return { ok: true };
 }
 
-// Check if user can log sleep today (returns true if they haven't logged yet today)
-export async function canLogSleepToday(userHash: string): Promise<boolean> {
+// Check if user can log workout today (returns true if they haven't logged yet today)
+export async function canLogWorkoutToday(userHash: string): Promise<boolean> {
   const today = new Date().toISOString().split('T')[0];
 
   const { data, error } = await supabase
     .from('home_page_top')
-    .select('last_sleep_log_date')
+    .select('last_workout_log_date')
     .eq('user_hash', userHash)
     .maybeSingle();
 
   if (error) {
-    console.error('Failed to check sleep log status:', error);
+    console.error('Failed to check workout log status:', error);
     return true; // Default to allowing if error
   }
 
-  const lastLogDate = data?.last_sleep_log_date;
+  const lastLogDate = data?.last_workout_log_date;
   return lastLogDate !== today;
 }
 

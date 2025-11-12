@@ -3,9 +3,20 @@ import { addActivityLogWithId, getRandomValidators, distributeProofToValidators 
 import { getBalance, withdraw, deposit } from './transaction_utils';
 import { addTransaction } from './stripe_utils';
 
+export interface WeeklySchedule {
+  monday: string;
+  tuesday: string;
+  wednesday: string;
+  thursday: string;
+  friday: string;
+  saturday: string;
+  sunday: string;
+}
+
 export interface Game {
   id: string;
-  wake_up_time: string;
+  split_type: string;  // Keep this for database compatibility
+  weekly_schedule?: WeeklySchedule;  // Add this for weekly schedule
   stake: number;
   status: 'joinable' | 'active' | 'completed';
   player_count: number;
@@ -20,7 +31,7 @@ export interface GamePlayer {
   user_hash: string;
   joined_at: string;
   status: 'active' | 'eliminated' | 'winner';
-  total_wakeups: number;
+  total_workouts: number;
   last_submission_date: string | null;
 }
 
@@ -40,7 +51,7 @@ export interface GameLog {
   game_id: string;
   user_hash: string | null;
   message: string;
-  event_type: 'join' | 'wakeup' | 'elimination' | 'win' | 'missed_wakeup' | 'game_start' | 'game_end' | 'chat' | 'proof';
+  event_type: 'join' | 'workout' | 'elimination' | 'win' | 'missed_workout' | 'game_start' | 'game_end' | 'chat' | 'proof';
   created_at: string;
   photo_url?: string | null;
 }
@@ -54,13 +65,14 @@ export interface GameWithPlayers extends Game {
  * Create a new game
  */
 export async function createGame(
-  wakeUpTime: string,
+  weeklySchedule: WeeklySchedule,
   stake: number
 ): Promise<{ ok: boolean; game?: Game; error?: any }> {
+  // Store weekly schedule as JSON string in split_type field
   const { data, error } = await supabase
     .from('games')
     .insert({
-      wake_up_time: wakeUpTime,
+      split_type: JSON.stringify(weeklySchedule),
       stake: stake,
       status: 'joinable',
       player_count: 0,
@@ -73,7 +85,23 @@ export async function createGame(
     return { ok: false, error };
   }
 
-  return { ok: true, game: data as Game };
+  // Parse the weekly schedule back out
+  const game = data as Game;
+  try {
+    game.weekly_schedule = JSON.parse(game.split_type);
+  } catch (e) {
+    game.weekly_schedule = {
+      monday: game.split_type,
+      tuesday: game.split_type,
+      wednesday: game.split_type,
+      thursday: game.split_type,
+      friday: game.split_type,
+      saturday: game.split_type,
+      sunday: game.split_type,
+    };
+  }
+
+  return { ok: true, game };
 }
 
 /**
@@ -92,7 +120,26 @@ export async function getJoinableGames(): Promise<Game[]> {
     return [];
   }
 
-  return (data as Game[]) || [];
+  // Parse weekly schedules
+  const games = (data as Game[]) || [];
+  games.forEach(game => {
+    try {
+      game.weekly_schedule = JSON.parse(game.split_type);
+    } catch (e) {
+      // If it's not JSON, treat it as a single split type for all days
+      game.weekly_schedule = {
+        monday: game.split_type,
+        tuesday: game.split_type,
+        wednesday: game.split_type,
+        thursday: game.split_type,
+        friday: game.split_type,
+        saturday: game.split_type,
+        sunday: game.split_type,
+      };
+    }
+  });
+
+  return games;
 }
 
 /**
@@ -167,7 +214,7 @@ export async function joinGame(
       game_id: gameId,
       user_hash: userHash,
       status: 'active',
-      total_wakeups: 0,
+      total_workouts: 0,
     });
 
   if (insertError) {
@@ -328,6 +375,22 @@ export async function getGameDetails(gameId: string): Promise<GameWithPlayers | 
     return null;
   }
 
+  // Parse weekly schedule
+  const parsedGame = game as Game;
+  try {
+    parsedGame.weekly_schedule = JSON.parse(parsedGame.split_type);
+  } catch (e) {
+    parsedGame.weekly_schedule = {
+      monday: parsedGame.split_type,
+      tuesday: parsedGame.split_type,
+      wednesday: parsedGame.split_type,
+      thursday: parsedGame.split_type,
+      friday: parsedGame.split_type,
+      saturday: parsedGame.split_type,
+      sunday: parsedGame.split_type,
+    };
+  }
+
   const { data: players, error: playersError } = await supabase
     .from('game_players')
     .select('*')
@@ -352,7 +415,7 @@ export async function getGameDetails(gameId: string): Promise<GameWithPlayers | 
   }
 
   return {
-    ...game,
+    ...parsedGame,
     players: (players as GamePlayer[]) || [],
     logs: (logs as GameLog[]) || [],
   } as GameWithPlayers;
@@ -460,16 +523,16 @@ export async function sendChatMessage(
 }
 
 /**
- * Submit wakeup proof (photo) with photo upload to Supabase Storage
+ * Submit workout proof (photo) with photo upload to Supabase Storage
  */
 export async function submitWakeupProof(
   gameId: string,
   userHash: string,
   photoUri: string,
   caption: string,
-  wakeUpTime: string
+  splitType: string
 ): Promise<{ ok: boolean; isOnTime?: boolean; error?: any }> {
-  console.log('=== submitWakeupProof ===');
+  console.log('=== submitWorkoutProof ===');
   console.log('Game ID:', gameId);
   console.log('User hash:', userHash);
   console.log('Photo URI:', photoUri);
@@ -492,14 +555,9 @@ export async function submitWakeupProof(
     return { ok: false, error: { message: 'Already submitted today' } };
   }
 
-  // Calculate if submission is on time
-  const now = submittedAt;
-  const [hours, minutes] = wakeUpTime.split(':').map(Number);
-  const deadline = new Date(now);
-  deadline.setHours(hours, minutes, 0, 0);
-
-  const isOnTime = now <= deadline;
-  console.log('Is on time:', isOnTime, 'Deadline:', deadline, 'Now:', now);
+  // For workout proofs, just check if it's submitted on the same day (always on time if same day)
+  const isOnTime = true; // Workouts are flexible throughout the day
+  console.log('Is on time:', isOnTime, 'Submitted at:', submittedAt);
 
   // Upload photo to Supabase Storage
   console.log('Uploading photo to storage...');
@@ -510,7 +568,7 @@ export async function submitWakeupProof(
   const arrayBuffer = await response.arrayBuffer();
 
   const { error: uploadError } = await supabase.storage
-    .from('wakeup-proofs')
+    .from('workout-proofs')
     .upload(fileName, arrayBuffer, {
       contentType: 'image/jpeg',
       cacheControl: '3600',
@@ -523,7 +581,7 @@ export async function submitWakeupProof(
 
   // Get public URL
   const { data: { publicUrl } } = supabase.storage
-    .from('wakeup-proofs')
+    .from('workout-proofs')
     .getPublicUrl(fileName);
 
   console.log('Photo uploaded successfully:', publicUrl);
@@ -546,11 +604,11 @@ export async function submitWakeupProof(
     return { ok: false, error: insertError };
   }
 
-  // If on time, increment total_wakeups
+  // If on time, increment total_workouts in game_players
   if (isOnTime) {
     const { data: player } = await supabase
       .from('game_players')
-      .select('total_wakeups')
+      .select('total_workouts')
       .eq('game_id', gameId)
       .eq('user_hash', userHash)
       .single();
@@ -559,7 +617,7 @@ export async function submitWakeupProof(
       await supabase
         .from('game_players')
         .update({
-          total_wakeups: player.total_wakeups + 1,
+          total_workouts: player.total_workouts + 1,
           last_submission_date: submissionDate,
         })
         .eq('game_id', gameId)
@@ -567,8 +625,34 @@ export async function submitWakeupProof(
     }
   }
 
+  // Increment workout count in home_page_top (profile stats)
+  console.log('=== Incrementing workout count in home_page_top ===');
+  const { data: homeStats } = await supabase
+    .from('home_page_top')
+    .select('workout_logged, workout_history')
+    .eq('user_hash', userHash)
+    .maybeSingle();
+
+  if (homeStats) {
+    const newWorkoutCount = (homeStats.workout_logged || 0) + 1;
+    const newHistory = [...(homeStats.workout_history || []), 1].slice(-7);
+
+    await supabase
+      .from('home_page_top')
+      .update({
+        workout_logged: newWorkoutCount,
+        workout_history: newHistory,
+        current_split_day: caption || 'Workout',
+      })
+      .eq('user_hash', userHash);
+
+    console.log('✅ Workout count incremented to:', newWorkoutCount);
+  } else {
+    console.warn('⚠️ No home_page_top entry found for user');
+  }
+
   // Add proof log entry with photo URL
-  const proofMessage = caption ? `"${caption}"` : 'submitted wakeup proof';
+  const proofMessage = caption ? `"${caption}"` : 'submitted workout proof';
   await supabase
     .from('game_logs')
     .insert({
@@ -586,7 +670,7 @@ export async function submitWakeupProof(
     minute: '2-digit',
     hour12: true
   });
-  const activityMessage = `${verificationEmoji} Submitted wakeup proof at ${timeString} - "${caption}"`;
+  const activityMessage = `${verificationEmoji} Submitted workout proof at ${timeString} - "${caption}"`;
 
   console.log('=== Adding to activity feed ===');
   console.log('Activity message:', activityMessage);
@@ -596,7 +680,7 @@ export async function submitWakeupProof(
     userHash,
     userHash,
     activityMessage,
-    'wakeup',
+    'workout',
     publicUrl,
     gameId  // Pass game_id for PBFT rejection stake slashing
   );
@@ -781,7 +865,7 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
   // Get all active games
   const { data: activeGames } = await supabase
     .from('games')
-    .select('id, wake_up_time')
+    .select('id')
     .eq('status', 'active');
 
   if (!activeGames || activeGames.length === 0) {
@@ -818,12 +902,12 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
       if (!submission) {
         console.log(`Player ${player.user_hash} missed proof on ${yesterdayDate}`);
 
-        // Add missed wakeup log
+        // Add missed workout log
         await addGameLog(
           game.id,
           player.user_hash,
-          `0x${player.user_hash.substring(0, 8)} missed their wakeup proof`,
-          'missed_wakeup'
+          `0x${player.user_hash.substring(0, 8)} missed their workout proof`,
+          'missed_workout'
         );
 
         // Redistribute their stake to remaining players

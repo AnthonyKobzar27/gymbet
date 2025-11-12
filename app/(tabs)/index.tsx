@@ -126,7 +126,7 @@ export default function HomeScreen() {
         {!user ? (
           <View style={styles.loginPromptContainer}>
             <View style={styles.loginPrompt}>
-              <Text style={styles.loginPromptTitle}>Welcome to Snooze!</Text>
+              <Text style={styles.loginPromptTitle}>Welcome to GymBet!</Text>
               <Text style={styles.loginPromptText}>
                 Join the discipline challenge community. Bet on your goals and win rewards!
               </Text>

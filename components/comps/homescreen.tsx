@@ -4,9 +4,9 @@ import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
-import { getStats, addSleep, canLogSleepToday as checkCanLogSleep } from '@/lib/homepage_utils';
+import { getStats, addWorkout, canLogWorkoutToday as checkCanLogWorkout } from '@/lib/homepage_utils';
 import { subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes, getProofsForValidator, checkPBFTValidation } from '@/lib/activity_log_utils';
-import { getUserActiveGame } from '@/lib/game_utils';
+import { getUserActiveGame, getGameDetails } from '@/lib/game_utils';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { UserAvatar } from '@/components/Avatar';
@@ -76,7 +76,7 @@ interface FeedItem {
   userHash: string;
   action: string;
   timestamp: string;
-  type: 'wakeup' | 'comment' | 'bet' | 'win';
+  type: 'workout' | 'comment' | 'bet' | 'win';
   image?: string | null;
   approvals?: number;
   rejections?: number;
@@ -86,16 +86,18 @@ interface FeedItem {
 // Purely presentational home screen – no navigation/auth logic, just UI
 export default function HomeScreen() {
   const { getUserProfile } = useAuth();
-  const [sleepAverage, setSleepAverage] = useState(0);
+  const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [profitMade, setProfitMade] = useState(0);
-  const [sleepData, setSleepData] = useState([0]);
+  const [workoutData, setWorkoutData] = useState([0]);
   const [profitData, setProfitData] = useState([0]);
   const [userHash, setUserHash] = useState<string | null>(null);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [hasActiveGame, setHasActiveGame] = useState(false);
-  const [sleepModalVisible, setSleepModalVisible] = useState(false);
-  const [sleepHoursInput, setSleepHoursInput] = useState('');
-  const [canLogSleepToday, setCanLogSleepToday] = useState(true);
+  const [activeGame, setActiveGame] = useState<any>(null);
+  const [splitModalVisible, setSplitModalVisible] = useState(false);
+  const [splitInput, setSplitInput] = useState('');
+  const [currentSplitDay, setCurrentSplitDay] = useState('');
+  const [canLogWorkoutToday, setCanLogWorkoutToday] = useState(true);
 
   useEffect(() => {
     loadUserData();
@@ -108,7 +110,7 @@ export default function HomeScreen() {
         userHash: newLog.user_hash,
         action: newLog.message,
         timestamp: formatTimestamp(newLog.timestep),
-        type: newLog.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+        type: newLog.typeofmessage as 'workout' | 'comment' | 'bet' | 'win',
         image: newLog.image,
       };
       setFeedItems((prev) => [newItem, ...prev]);
@@ -132,14 +134,15 @@ export default function HomeScreen() {
     if (profile?.hash) {
       setUserHash(profile.hash);
       const stats = await getStats(profile.hash);
-      setSleepAverage(stats.sleepAverage);
+      setTotalWorkouts(stats.workoutLogged); // Show total workouts instead of average
       setProfitMade(stats.profitMade);
-      setSleepData(stats.sleepHistory.length > 0 ? stats.sleepHistory : [0]);
+      setWorkoutData(stats.workoutHistory.length > 0 ? stats.workoutHistory : [0]);
       setProfitData(stats.profitHistory.length > 0 ? stats.profitHistory : [0]);
+      setCurrentSplitDay(stats.currentSplitDay || 'No split set');
 
-      // Check if user can log sleep today
-      const canLog = await checkCanLogSleep(profile.hash);
-      setCanLogSleepToday(canLog);
+      // Check if user can log workout today
+      const canLog = await checkCanLogWorkout(profile.hash);
+      setCanLogWorkoutToday(canLog);
     }
   };
 
@@ -147,9 +150,28 @@ export default function HomeScreen() {
     const profile = await getUserProfile();
     if (profile?.hash) {
       console.log('=== Checking for active game ===');
-      const activeGame = await getUserActiveGame(profile.hash);
-      console.log('Active game:', activeGame ? activeGame.id : 'none');
-      setHasActiveGame(!!activeGame);
+      const game = await getUserActiveGame(profile.hash);
+      console.log('Active game:', game ? game.id : 'none');
+
+      if (game) {
+        // Load full game details with weekly schedule
+        const gameDetails = await getGameDetails(game.id);
+        setHasActiveGame(true);
+        setActiveGame(gameDetails);
+
+        // Update current split day based on the game schedule
+        if (gameDetails?.weekly_schedule) {
+          const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+          const today = days[new Date().getDay()];
+          setCurrentSplitDay(gameDetails.weekly_schedule[today as keyof typeof gameDetails.weekly_schedule] || 'Rest');
+        } else {
+          setCurrentSplitDay('No game joined');
+        }
+      } else {
+        setHasActiveGame(false);
+        setActiveGame(null);
+        setCurrentSplitDay('No game joined');
+      }
     }
   };
 
@@ -184,7 +206,7 @@ export default function HomeScreen() {
         userHash: log.user_hash,
         action: log.message,
         timestamp: formatTimestamp(log.timestep),
-        type: log.typeofmessage as 'wakeup' | 'comment' | 'bet' | 'win',
+        type: log.typeofmessage as 'workout' | 'comment' | 'bet' | 'win',
         image: log.image,
         approvals: counts.approvals,
         rejections: counts.rejections,
@@ -208,38 +230,37 @@ export default function HomeScreen() {
     return `${Math.floor(diffMins / 1440)} day${Math.floor(diffMins / 1440) > 1 ? 's' : ''} ago`;
   };
 
-  const handleOpenSleepModal = () => {
-    setSleepHoursInput('');
-    setSleepModalVisible(true);
+  const handleOpenSplitModal = () => {
+    setSplitInput('');
+    setSplitModalVisible(true);
   };
 
-  const handleSubmitSleep = async () => {
+  const handleSubmitWorkout = async () => {
     if (!userHash) {
       Alert.alert('Error', 'User not authenticated');
       return;
     }
 
-    const hours = parseFloat(sleepHoursInput);
-    if (isNaN(hours) || hours <= 0 || hours > 24) {
-      Alert.alert('Invalid Input', 'Please enter a valid number of hours between 0 and 24');
+    if (!splitInput.trim()) {
+      Alert.alert('Invalid Input', 'Please enter the workout for today (e.g., Push, Pull, Legs)');
       return;
     }
 
-    setSleepModalVisible(false);
-    const result = await addSleep(userHash, hours);
+    setSplitModalVisible(false);
+    const result = await addWorkout(userHash, splitInput.trim());
     if (result.ok) {
-      Alert.alert('Success', `Logged ${hours} hours of sleep!`);
-      setCanLogSleepToday(false); // Disable sleep logging immediately
+      Alert.alert('Success', `Logged ${splitInput} workout!`);
+      setCanLogWorkoutToday(false); // Disable workout logging immediately
       loadUserData();
     } else {
-      console.error('Failed to add sleep:', result.error);
+      console.error('Failed to add workout:', result.error);
       const errorMessage = result.error?.message || 'Unknown error';
 
       // Show special message if already logged today
-      if (errorMessage.includes('already logged sleep today')) {
-        Alert.alert('Already Logged', 'You have already logged your sleep for today. Come back tomorrow! 😴');
+      if (errorMessage.includes('already logged workout today')) {
+        Alert.alert('Already Logged', 'You have already logged your workout for today. Come back tomorrow!');
       } else {
-        Alert.alert('Error', `Failed to log sleep: ${errorMessage}`);
+        Alert.alert('Error', `Failed to log workout: ${errorMessage}`);
       }
     }
   };
@@ -343,31 +364,65 @@ export default function HomeScreen() {
       >
         <View style={styles.content}>
 
-          {/* Average Sleep with Chart */}
+          {/* Training Split Tracker */}
           <TouchableOpacity
             style={styles.arcadeCard}
-            onPress={canLogSleepToday ? handleOpenSleepModal : undefined}
-            disabled={!canLogSleepToday}
+            onPress={canLogWorkoutToday && hasActiveGame ? handleOpenSplitModal : undefined}
+            disabled={!canLogWorkoutToday || !hasActiveGame}
           >
             <View style={styles.cardInner}>
-              <View style={styles.metricRow}>
-                <View style={styles.metricLeft}>
-                  <Text style={styles.statLabel}>AVG SLEEP / DAY</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{sleepAverage}h</Text>
-                </View>
-                <View style={styles.chartContainer}>
-                  <MiniLineChart data={sleepData} color="#000" height={60} />
-                </View>
-              </View>
-              {canLogSleepToday && (
+              <Text style={styles.cardTitle}>WEEKLY SPLIT</Text>
+              <View style={styles.spacer} />
+
+              {!hasActiveGame ? (
+                <Text style={styles.noGameText}>
+                  Join a game to see your weekly split!
+                </Text>
+              ) : activeGame?.weekly_schedule ? (
+                <>
+                  {/* Weekly Schedule Grid */}
+                  <View style={styles.weeklyGrid}>
+                    {['M', 'T', 'W', 'TH', 'F', 'S', 'S'].map((dayLabel, index) => {
+                      const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+                      const dayName = dayNames[index];
+                      const workout = activeGame.weekly_schedule[dayName];
+                      const todayIndex = (new Date().getDay() + 6) % 7; // Convert Sunday=0 to Monday=0
+                      const isToday = index === todayIndex;
+
+                      return (
+                        <View key={index} style={[styles.dayBox, isToday && styles.dayBoxActive]}>
+                          <Text style={[styles.dayBoxLabel, isToday && styles.dayBoxLabelActive]}>{dayLabel}</Text>
+                          <Text style={[styles.dayBoxValue, isToday && styles.dayBoxValueActive]}>{workout}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+
+                  <View style={styles.dividerLight} />
+                  <View style={styles.metricRow}>
+                    <View style={styles.metricLeft}>
+                      <Text style={styles.statLabel}>TODAY</Text>
+                      <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{currentSplitDay}</Text>
+                      <Text style={styles.statSubtext}>{totalWorkouts} total workouts</Text>
+                    </View>
+                    <View style={styles.chartContainer}>
+                      <MiniLineChart data={workoutData} color="#000" height={60} />
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.noGameText}>Loading schedule...</Text>
+              )}
+
+              {hasActiveGame && canLogWorkoutToday && (
                 <>
                   <View style={styles.dividerLight} />
                   <View style={styles.linkRow}>
-                    <Text style={styles.linkText}>LOG SLEEP →</Text>
+                    <Text style={styles.linkText}>LOG WORKOUT →</Text>
                   </View>
                 </>
               )}
-              {!canLogSleepToday && (
+              {hasActiveGame && !canLogWorkoutToday && (
                 <>
                   <View style={styles.dividerLight} />
                   <View style={styles.linkRow}>
@@ -428,7 +483,7 @@ export default function HomeScreen() {
                           resizeMode="cover"
                         />
                       )}
-                      {item.type === 'wakeup' && (
+                      {item.type === 'workout' && (
                         <View style={styles.voteContainer}>
                           <TouchableOpacity
                             style={[
@@ -497,38 +552,37 @@ export default function HomeScreen() {
       </View>
     </SafeAreaView>
 
-    {/* Sleep Log Modal */}
+    {/* Workout Split Log Modal */}
     <Modal
       animationType="fade"
       transparent={true}
-      visible={sleepModalVisible}
-      onRequestClose={() => setSleepModalVisible(false)}
+      visible={splitModalVisible}
+      onRequestClose={() => setSplitModalVisible(false)}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.sleepModalContent}>
-          <Text style={styles.sleepModalTitle}>LOG SLEEP</Text>
-          <Text style={styles.sleepModalSubtitle}>How many hours did you sleep?</Text>
+          <Text style={styles.sleepModalTitle}>LOG WORKOUT</Text>
+          <Text style={styles.sleepModalSubtitle}>What's your split today?</Text>
 
           <TextInput
             style={styles.sleepInput}
-            value={sleepHoursInput}
-            onChangeText={setSleepHoursInput}
-            placeholder="8"
+            value={splitInput}
+            onChangeText={setSplitInput}
+            placeholder="e.g., Push, Pull, Legs"
             placeholderTextColor="#999"
-            keyboardType="decimal-pad"
-            maxLength={4}
+            maxLength={50}
           />
 
           <View style={styles.sleepModalButtons}>
             <TouchableOpacity
               style={styles.sleepModalButtonSecondary}
-              onPress={() => setSleepModalVisible(false)}
+              onPress={() => setSplitModalVisible(false)}
             >
               <Text style={styles.sleepModalButtonSecondaryText}>CANCEL</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.sleepModalButtonPrimary}
-              onPress={handleSubmitSleep}
+              onPress={handleSubmitWorkout}
             >
               <Text style={styles.sleepModalButtonPrimaryText}>LOG</Text>
             </TouchableOpacity>
@@ -882,5 +936,51 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     fontSize: 12,
     letterSpacing: 0.5,
+  },
+  weeklyGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  dayBox: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#FAFAFA',
+    marginHorizontal: 2,
+  },
+  dayBoxActive: {
+    borderColor: '#000',
+    backgroundColor: '#000',
+  },
+  dayBoxLabel: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  dayBoxLabelActive: {
+    color: '#FFF',
+  },
+  dayBoxValue: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#000',
+    textAlign: 'center',
+  },
+  dayBoxValueActive: {
+    color: '#FFF',
+    fontFamily: 'Inter_700Bold',
+  },
+  noGameText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+    textAlign: 'center',
+    paddingVertical: 24,
   },
 });

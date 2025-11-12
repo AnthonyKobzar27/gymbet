@@ -34,7 +34,15 @@ export default function BetsScreen() {
 
   // Create game modal
   const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [newGameWakeTime, setNewGameWakeTime] = useState('07:00');
+  const [newGameSchedule, setNewGameSchedule] = useState({
+    monday: 'Push',
+    tuesday: 'Pull',
+    wednesday: 'Legs',
+    thursday: 'Push',
+    friday: 'Pull',
+    saturday: 'Legs',
+    sunday: 'Rest',
+  });
   const [newGameStake, setNewGameStake] = useState('10');
 
   // Tab selection for active game view
@@ -108,11 +116,11 @@ export default function BetsScreen() {
 
   const handleCreateGame = async () => {
     console.log('=== handleCreateGame ===');
-    console.log('Wake time:', newGameWakeTime);
+    console.log('Weekly schedule:', newGameSchedule);
     console.log('Stake:', newGameStake);
 
-    if (!newGameWakeTime || !newGameStake) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (!newGameStake) {
+      Alert.alert('Error', 'Please enter a stake amount');
       return;
     }
 
@@ -123,13 +131,21 @@ export default function BetsScreen() {
     }
 
     console.log('Creating game...');
-    const result = await createGame(newGameWakeTime + ':00', stake);
+    const result = await createGame(newGameSchedule, stake);
 
     if (result.ok && result.game) {
       console.log('Game created successfully:', result.game.id);
       Alert.alert('Success', 'Game created! You can now join it.');
       setCreateModalVisible(false);
-      setNewGameWakeTime('07:00');
+      setNewGameSchedule({
+        monday: 'Push',
+        tuesday: 'Pull',
+        wednesday: 'Legs',
+        thursday: 'Push',
+        friday: 'Pull',
+        saturday: 'Legs',
+        sunday: 'Rest',
+      });
       setNewGameStake('10');
       loadGames();
     } else {
@@ -149,7 +165,7 @@ export default function BetsScreen() {
       return;
     }
 
-    // Get game details to get wake-up time
+    // Get game details to get split type
     const gameDetails = await getGameDetails(gameId);
     if (!gameDetails) {
       Alert.alert('Error', 'Could not load game details');
@@ -163,12 +179,12 @@ export default function BetsScreen() {
       console.log('Successfully joined game:', gameId);
 
       // Set up notifications for this game
-      console.log('Setting up notifications for wake time:', gameDetails.wake_up_time);
-      await setupGameNotifications(gameDetails.wake_up_time);
+      console.log('Setting up notifications for split:', gameDetails.split_type);
+      await setupGameNotifications(gameDetails.split_type);
 
       Alert.alert(
         'Success!',
-        'Successfully joined the game! Your stake has been deducted.\n\n📱 Notifications enabled:\n• Daily reminder at 9 PM\n• Wake-up reminder 1 hour before'
+        'Successfully joined the game! Your stake has been deducted.\n\n📱 Notifications enabled:\n• Daily workout reminder'
       );
       loadGames();
     } else {
@@ -214,15 +230,15 @@ export default function BetsScreen() {
       userHash,
       photoUri,
       caption,
-      activeGame.wake_up_time
+      activeGame.split_type
     );
 
     if (result.ok) {
       Alert.alert(
         'Success!',
         result.isOnTime
-          ? 'Your wakeup proof was submitted on time!'
-          : 'Your wakeup proof was submitted, but it was late.'
+          ? 'Your workout proof was submitted on time!'
+          : 'Your workout proof was submitted, but it was late.'
       );
       loadGames(); // Reload to update submission status
     } else {
@@ -284,11 +300,44 @@ export default function BetsScreen() {
             <Text style={styles.cardTitle}>MY CURRENT GAME</Text>
             <View style={styles.spacer} />
 
+            {/* Weekly Schedule */}
+            {activeGame.weekly_schedule && (
+              <>
+                <View style={styles.scheduleGrid}>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>M</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.monday}</Text>
+                  </View>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>T</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.tuesday}</Text>
+                  </View>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>W</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.wednesday}</Text>
+                  </View>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>TH</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.thursday}</Text>
+                  </View>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>F</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.friday}</Text>
+                  </View>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>S</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.saturday}</Text>
+                  </View>
+                  <View style={styles.scheduleRow}>
+                    <Text style={styles.dayLabel}>S</Text>
+                    <Text style={styles.dayValue}>{activeGame.weekly_schedule.sunday}</Text>
+                  </View>
+                </View>
+                <View style={styles.spacer} />
+              </>
+            )}
+
             <View style={styles.gameStatsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>WAKE TIME</Text>
-                <Text style={styles.statValue}>{formatTime(activeGame.wake_up_time)}</Text>
-              </View>
               <View style={styles.statItem}>
                 <Text style={styles.statLabel}>STAKE</Text>
                 <Text style={styles.statValue}>${activeGame.stake}</Text>
@@ -296,6 +345,10 @@ export default function BetsScreen() {
               <View style={styles.statItem}>
                 <Text style={styles.statLabel}>POOL</Text>
                 <Text style={styles.statValue}>${activeGame.stake * activeGame.player_count}</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>PLAYERS</Text>
+                <Text style={styles.statValue}>{activeGame.players.length}/8</Text>
               </View>
             </View>
 
@@ -345,7 +398,7 @@ export default function BetsScreen() {
                         0x{player.user_hash.substring(0, 12)}...
                       </Text>
                       <Text style={styles.playerWakeups}>
-                        {player.total_wakeups} wakeups
+                        {player.total_workouts} workouts
                       </Text>
                     </View>
                   </View>
@@ -428,7 +481,7 @@ export default function BetsScreen() {
               ? `WAITING FOR PLAYERS... (${activeGame.players.length}/8)`
               : hasSubmittedToday
                 ? 'PROOF SUBMITTED TODAY ✓'
-                : 'SUBMIT WAKEUP PROOF'}
+                : 'SUBMIT WORKOUT PROOF'}
           </Text>
         </TouchableOpacity>
 
@@ -462,11 +515,43 @@ export default function BetsScreen() {
               joinableGames.map((game) => (
                 <View key={game.id} style={styles.gameItem}>
                   <View style={styles.gameHeader}>
-                    <Text style={styles.gameWakeTime}>
-                      Wake: {formatTime(game.wake_up_time)}
-                    </Text>
+                    <Text style={styles.gameTitle}>Weekly Split</Text>
                     <Text style={styles.gameStake}>${game.stake}</Text>
                   </View>
+
+                  {game.weekly_schedule && (
+                    <View style={styles.scheduleGrid}>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>M</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.monday}</Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>T</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.tuesday}</Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>W</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.wednesday}</Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>TH</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.thursday}</Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>F</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.friday}</Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>S</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.saturday}</Text>
+                      </View>
+                      <View style={styles.scheduleRow}>
+                        <Text style={styles.dayLabel}>S</Text>
+                        <Text style={styles.dayValue}>{game.weekly_schedule.sunday}</Text>
+                      </View>
+                    </View>
+                  )}
+
                   <View style={styles.gameInfo}>
                     <Text style={styles.gamePlayers}>
                       {game.player_count}/8 Players
@@ -548,16 +633,90 @@ export default function BetsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>CREATE NEW GAME</Text>
+            <Text style={styles.modalSubtitle}>Set your weekly workout split</Text>
 
-            <Text style={styles.inputLabel}>WAKE UP TIME</Text>
-            <TextInput
-              style={styles.input}
-              value={newGameWakeTime}
-              onChangeText={setNewGameWakeTime}
-              placeholder="07:00"
-              placeholderTextColor="#999"
-            />
+            {/* Two Column Layout for Days */}
+            <View style={styles.daysGrid}>
+              {/* Left Column */}
+              <View style={styles.daysColumn}>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>MON</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.monday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, monday: text})}
+                    placeholder="Push"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>TUE</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.tuesday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, tuesday: text})}
+                    placeholder="Pull"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>WED</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.wednesday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, wednesday: text})}
+                    placeholder="Legs"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>THU</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.thursday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, thursday: text})}
+                    placeholder="Push"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </View>
 
+              {/* Right Column */}
+              <View style={styles.daysColumn}>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>FRI</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.friday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, friday: text})}
+                    placeholder="Pull"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>SAT</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.saturday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, saturday: text})}
+                    placeholder="Legs"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+                <View style={styles.dayInputGroup}>
+                  <Text style={styles.dayInputLabel}>SUN</Text>
+                  <TextInput
+                    style={styles.dayInput}
+                    value={newGameSchedule.sunday}
+                    onChangeText={(text) => setNewGameSchedule({...newGameSchedule, sunday: text})}
+                    placeholder="Rest"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Stake Amount */}
             <Text style={styles.inputLabel}>STAKE AMOUNT ($)</Text>
             <TextInput
               style={styles.input}
@@ -593,7 +752,7 @@ export default function BetsScreen() {
           onClose={() => setProofModalVisible(false)}
           onSubmit={handleProofSubmit}
           gameId={activeGame.id}
-          wakeUpTime={activeGame.wake_up_time}
+          splitType={activeGame.split_type}
         />
       )}
     </ImageBackground>
@@ -920,6 +1079,13 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 0.5,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -1067,5 +1233,58 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     fontSize: 12,
     letterSpacing: 0.5,
+  },
+  scheduleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginVertical: 12,
+  },
+  scheduleRow: {
+    alignItems: 'center',
+    minWidth: 40,
+  },
+  dayLabel: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
+    marginBottom: 2,
+    letterSpacing: 0.5,
+  },
+  dayValue: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#000',
+  },
+  gameTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  daysColumn: {
+    flex: 1,
+  },
+  dayInputGroup: {
+    marginBottom: 10,
+  },
+  dayInputLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+    color: '#666',
+    marginBottom: 4,
+  },
+  dayInput: {
+    borderWidth: 2,
+    borderColor: '#000',
+    backgroundColor: '#FFF',
+    padding: 10,
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
   },
 });

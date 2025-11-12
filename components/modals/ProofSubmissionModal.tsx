@@ -22,7 +22,7 @@ interface ProofSubmissionModalProps {
   onClose: () => void;
   onSubmit: (photoUri: string, caption: string) => Promise<void>;
   gameId: string;
-  wakeUpTime: string;
+  splitType: string;
 }
 
 export default function ProofSubmissionModal({
@@ -30,7 +30,7 @@ export default function ProofSubmissionModal({
   onClose,
   onSubmit,
   gameId,
-  wakeUpTime,
+  splitType,
 }: ProofSubmissionModalProps) {
   const [facing, setFacing] = useState<CameraType>('front');
   const [permission, requestPermission] = useCameraPermissions();
@@ -98,7 +98,7 @@ export default function ProofSubmissionModal({
         <View style={styles.modalOverlay}>
           <View style={styles.permissionContainer}>
             <Text style={styles.permissionText}>
-              We need camera access to take your wakeup proof
+              We need camera access to take your workout proof
             </Text>
             <TouchableOpacity style={styles.button} onPress={requestPermission}>
               <Text style={styles.buttonText}>GRANT PERMISSION</Text>
@@ -124,7 +124,7 @@ export default function ProofSubmissionModal({
                   <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
                     <Text style={styles.closeButtonText}>✕</Text>
                   </TouchableOpacity>
-                  <Text style={styles.title}>TAKE WAKEUP PROOF</Text>
+                  <Text style={styles.title}>TAKE WORKOUT PROOF</Text>
                   <View style={styles.placeholder} />
                 </View>
 
@@ -172,7 +172,7 @@ export default function ProofSubmissionModal({
               <View style={styles.captionContainer}>
                 <TextInput
                   style={styles.captionInput}
-                  placeholder="Add a caption (e.g., 'Good morning!')"
+                  placeholder="Add a caption (e.g., 'Leg day complete!')"
                   placeholderTextColor="#999"
                   value={caption}
                   onChangeText={setCaption}
