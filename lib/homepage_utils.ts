@@ -35,16 +35,23 @@ export async function getStats(userHash: string): Promise<UserStats> {
 }
 
 export async function initStats(userHash: string): Promise<boolean> {
+  console.log('=== initStats called ===');
+  console.log('userHash:', userHash);
+
   // First check if the user already has stats
-  const { data: existing } = await supabase
+  const { data: existing, error: checkError } = await supabase
     .from('home_page_top')
     .select('user_hash')
     .eq('user_hash', userHash)
     .maybeSingle();
 
+  console.log('Existing stats check - data:', existing);
+  console.log('Existing stats check - error:', checkError);
+
   // Only create if user doesn't exist
   if (!existing) {
-    const { error } = await supabase
+    console.log('No existing stats found, creating new entry...');
+    const { data, error } = await supabase
       .from('home_page_top')
       .insert({
         user_hash: userHash,
@@ -52,12 +59,20 @@ export async function initStats(userHash: string): Promise<boolean> {
         profit_made: 0,
         sleep_history: [0],
         profit_history: [0]
-      });
+      })
+      .select();
+
+    console.log('Insert result - data:', data);
+    console.log('Insert result - error:', error);
 
     if (error) {
-      console.error('failed to init user stats', error);
+      console.error('❌ FAILED to init user stats', error);
       return false;
     }
+
+    console.log('✅ Stats initialized successfully!');
+  } else {
+    console.log('User already has stats entry');
   }
   return true;
 }

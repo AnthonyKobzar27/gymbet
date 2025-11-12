@@ -174,7 +174,7 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
           {type === 'deposit' && (
             <Text style={styles.disclaimer}>
-              You'll be redirected to secure Stripe checkout
+              You&apos;ll be redirected to secure Stripe checkout
             </Text>
           )}
 

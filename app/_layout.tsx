@@ -7,7 +7,15 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { StripeProvider } from '@stripe/stripe-react-native';
+import { Platform } from 'react-native';
+// Conditionally load Stripe on native; provide a no-op provider on web
+let StripeProvider: React.ComponentType<any>;
+if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
+} else {
+  StripeProvider = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+}
 import { AuthProvider } from '@/contexts/AuthContext';
 
 // Stripe publishable key - replace with your actual key

@@ -100,7 +100,7 @@ export default function DepositAmountModal({ visible, onClose, onSelectAmount }:
           </View>
 
           <Text style={styles.disclaimer}>
-            You'll be redirected to secure Stripe checkout
+            You&apos;ll be redirected to secure Stripe checkout
           </Text>
           </View>
         </View>

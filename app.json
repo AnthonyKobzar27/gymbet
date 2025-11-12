@@ -1,17 +1,42 @@
 {
   "expo": {
-    "name": "MyAwesomeApp",
-    "slug": "MyAwesomeApp",
+    "name": "SnoozeApp",
+    "slug": "snoozeapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myawesomeapp",
+    "scheme": "snoozeapp",
     "userInterfaceStyle": "automatic",
+    "description": "Wake-up challenge betting app with PBFT validation - Prove you're awake or lose your stake!",
+    "privacy": "public",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.snoozeapp.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need camera access to take wake-up proof photos for your challenge",
+        "NSPhotoLibraryUsageDescription": "We need access to your photo library to view and manage wake-up proof photos",
+        "NSPhotoLibraryAddUsageDescription": "We need permission to save wake-up proof photos to your library",
+        "NSUserNotificationsUsageDescription": "We send reminders for your wake-up challenges and notifications when validators vote on your proofs",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.snoozeapp.app",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "POST_NOTIFICATIONS",
+        "READ_MEDIA_IMAGES",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "POST_NOTIFICATIONS",
+        "READ_MEDIA_IMAGES"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -38,11 +63,29 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#ffffff"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f620eba5-77af-410e-856f-3d34eb8c3ff8"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f620eba5-77af-410e-856f-3d34eb8c3ff8"
     }
   }
 }

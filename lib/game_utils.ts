@@ -597,7 +597,8 @@ export async function submitWakeupProof(
     userHash,
     activityMessage,
     'wakeup',
-    publicUrl
+    publicUrl,
+    gameId  // Pass game_id for PBFT rejection stake slashing
   );
 
   if (!activityResult.ok || !activityResult.id) {
@@ -715,9 +716,49 @@ export async function redistributeStake(
   await addGameLog(
     gameId,
     eliminatedUserHash,
-    `0x${eliminatedUserHash.substring(0, 8)} was eliminated for missing wakeup. Stake redistributed to remaining players.`,
+    `0x${eliminatedUserHash.substring(0, 8)} was eliminated. Stake redistributed to remaining players.`,
     'elimination'
   );
+
+  // Check if only one player remains - declare winner and end game
+  const { data: remainingPlayers } = await supabase
+    .from('game_players')
+    .select('user_hash')
+    .eq('game_id', gameId)
+    .eq('status', 'active');
+
+  if (remainingPlayers && remainingPlayers.length === 1) {
+    const winner = remainingPlayers[0];
+    console.log(`Only one player remains! Winner: ${winner.user_hash}`);
+
+    // Mark winner
+    await supabase
+      .from('game_players')
+      .update({ status: 'winner' })
+      .eq('game_id', gameId)
+      .eq('user_hash', winner.user_hash);
+
+    // End game
+    await supabase
+      .from('games')
+      .update({
+        status: 'completed',
+        ended_at: new Date().toISOString()
+      })
+      .eq('id', gameId);
+
+    // Add win log
+    await addGameLog(
+      gameId,
+      winner.user_hash,
+      `🏆 0x${winner.user_hash.substring(0, 8)} won the game!`,
+      'win'
+    );
+
+    console.log(`Game ${gameId} completed. Winner: ${winner.user_hash}`);
+  } else if (remainingPlayers) {
+    console.log(`${remainingPlayers.length} players still remain in the game`);
+  }
 
   console.log('Stake redistribution complete');
   return { ok: true };

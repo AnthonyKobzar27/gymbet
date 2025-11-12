@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { redistributeStake, addGameLog } from './game_utils';
 
 // Simple interface matching the table exactly
 export interface ActivityLog {
@@ -9,6 +10,10 @@ export interface ActivityLog {
   typeofmessage: string;
   image: string | null;
   timestep: string;
+  game_id?: string | null;
+  validation_status?: 'pending' | 'approved' | 'rejected';
+  total_validators?: number;
+  required_approvals?: number;
 }
 
 // Get the activity feed - just fetch and return
@@ -59,7 +64,8 @@ export async function addActivityLogWithId(
   senderHash: string,
   message: string,
   typeofmessage: string,
-  image?: string
+  image?: string,
+  gameId?: string | null
 ): Promise<{ ok: boolean; id?: number; error?: any }> {
   const { data, error } = await supabase
     .from('activity_log')
@@ -69,6 +75,7 @@ export async function addActivityLogWithId(
       message: message,
       typeofmessage: typeofmessage,
       image: image || null,
+      game_id: gameId || null,
     })
     .select('id')
     .single();
@@ -437,6 +444,58 @@ export async function checkPBFTValidation(activityLogId: number): Promise<{
       .from('proof_distribution')
       .update({ has_voted: true })
       .eq('activity_log_id', activityLogId);
+
+    // ========== STAKE SLASHING FOR PBFT REJECTION ==========
+    if (newStatus === 'rejected') {
+      console.log('🔥 PROOF REJECTED BY PBFT! Starting stake slashing...');
+
+      // Get the full activity log to extract user_hash and game_id
+      const { data: fullLog, error: logErr } = await supabase
+        .from('activity_log')
+        .select('user_hash, game_id')
+        .eq('id', activityLogId)
+        .single();
+
+      if (logErr || !fullLog) {
+        console.error('Failed to get activity log for stake slashing:', logErr);
+      } else if (fullLog.game_id) {
+        console.log(`Slashing stake for user ${fullLog.user_hash} in game ${fullLog.game_id}`);
+
+        // Check if player is still active in the game
+        const { data: playerStatus } = await supabase
+          .from('game_players')
+          .select('status')
+          .eq('game_id', fullLog.game_id)
+          .eq('user_hash', fullLog.user_hash)
+          .maybeSingle();
+
+        if (playerStatus && playerStatus.status === 'active') {
+          // Add game log for rejection
+          await addGameLog(
+            fullLog.game_id,
+            fullLog.user_hash,
+            `❌ 0x${fullLog.user_hash.substring(0, 8)}'s proof was REJECTED by PBFT consensus (${rejections} reject votes). Stake slashed!`,
+            'elimination'
+          );
+
+          // Redistribute stake to remaining players
+          const redistributeResult = await redistributeStake(
+            fullLog.game_id,
+            fullLog.user_hash
+          );
+
+          if (redistributeResult.ok) {
+            console.log('✅ Stake successfully slashed and redistributed to opponents');
+          } else {
+            console.error('❌ Failed to redistribute slashed stake:', redistributeResult.error);
+          }
+        } else {
+          console.log('Player is not active in game, skipping stake slashing');
+        }
+      } else {
+        console.log('No game_id found in activity log, cannot slash stake');
+      }
+    }
   }
 
   return {

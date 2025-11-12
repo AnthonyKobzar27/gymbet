@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import SHA256 from "crypto-js/sha256";
 import { initBalance, changeBalance, getBalance, deposit, withdraw } from '../lib/transaction_utils';
+import { initStats } from '../lib/homepage_utils';
 
 interface AuthContextType {
   user: User | null;
@@ -70,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (profileError) return { error: profileError };
 
       await initBalance(userHash);
+      await initStats(userHash);
 
       console.log('✅ Signup successful. Check your email for verification.');
       return { error: null };

@@ -62,8 +62,8 @@ serve(async (req) => {
         },
       ],
       mode: 'payment',
-      success_url: 'exp://localhost:8081/--/(tabs)/profile?success=true',
-      cancel_url: 'exp://localhost:8081/--/(tabs)/profile?cancelled=true',
+      success_url: 'snoozeapp://profile?success=true',
+      cancel_url: 'snoozeapp://profile?cancelled=true',
       metadata: {
         userHash: userHash,
       },
