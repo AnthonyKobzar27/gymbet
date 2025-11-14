@@ -391,8 +391,8 @@ export default function HomeScreen() {
 
                       return (
                         <View key={index} style={[styles.dayBox, isToday && styles.dayBoxActive]}>
-                          <Text style={[styles.dayBoxLabel, isToday && styles.dayBoxLabelActive]}>{dayLabel}</Text>
-                          <Text style={[styles.dayBoxValue, isToday && styles.dayBoxValueActive]}>{workout}</Text>
+                          <Text style={[styles.dayBoxLabel, isToday && styles.dayBoxLabelActive]} numberOfLines={1}>{dayLabel}</Text>
+                          <Text style={[styles.dayBoxValue, isToday && styles.dayBoxValueActive]} numberOfLines={1}>{workout}</Text>
                         </View>
                       );
                     })}
@@ -403,33 +403,14 @@ export default function HomeScreen() {
                     <View style={styles.metricLeft}>
                       <Text style={styles.statLabel}>TODAY</Text>
                       <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{currentSplitDay}</Text>
-                      <Text style={styles.statSubtext}>{totalWorkouts} total workouts</Text>
                     </View>
-                    <View style={styles.chartContainer}>
-                      <MiniLineChart data={workoutData} color="#000" height={60} />
-                    </View>
+
                   </View>
                 </>
               ) : (
                 <Text style={styles.noGameText}>Loading schedule...</Text>
               )}
 
-              {hasActiveGame && canLogWorkoutToday && (
-                <>
-                  <View style={styles.dividerLight} />
-                  <View style={styles.linkRow}>
-                    <Text style={styles.linkText}>LOG WORKOUT →</Text>
-                  </View>
-                </>
-              )}
-              {hasActiveGame && !canLogWorkoutToday && (
-                <>
-                  <View style={styles.dividerLight} />
-                  <View style={styles.linkRow}>
-                    <Text style={styles.linkTextDisabled}>✓ LOGGED TODAY</Text>
-                  </View>
-                </>
-              )}
             </View>
           </TouchableOpacity>
 
@@ -946,11 +927,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     borderWidth: 2,
     borderColor: '#E0E0E0',
     backgroundColor: '#FAFAFA',
     marginHorizontal: 2,
+    minWidth: 0,
   },
   dayBoxActive: {
     borderColor: '#000',
@@ -962,6 +944,8 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 4,
     letterSpacing: 0.5,
+    textAlign: 'center',
+    width: '100%',
   },
   dayBoxLabelActive: {
     color: '#FFF',
@@ -971,6 +955,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
     textAlign: 'center',
+    width: '100%',
   },
   dayBoxValueActive: {
     color: '#FFF',

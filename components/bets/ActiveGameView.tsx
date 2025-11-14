@@ -43,32 +43,32 @@ export default function ActiveGameView({
             <>
               <View style={styles.scheduleGrid}>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>M</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.monday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>M</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.monday}</Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>T</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.tuesday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>T</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.tuesday}</Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>W</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.wednesday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>W</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.wednesday}</Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>TH</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.thursday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>TH</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.thursday}</Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>F</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.friday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>F</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.friday}</Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>S</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.saturday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>S</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.saturday}</Text>
                 </View>
                 <View style={styles.scheduleRow}>
-                  <Text style={styles.dayLabel}>S</Text>
-                  <Text style={styles.dayValue}>{activeGame.weekly_schedule.sunday}</Text>
+                  <Text style={styles.dayLabel} numberOfLines={1}>S</Text>
+                  <Text style={styles.dayValue} numberOfLines={1}>{activeGame.weekly_schedule.sunday}</Text>
                 </View>
               </View>
               <View style={styles.spacer} />
@@ -132,10 +132,10 @@ export default function ActiveGameView({
                 <View key={player.id} style={styles.playerItem}>
                   <UserAvatar hash={player.user_hash} size={40} />
                   <View style={styles.playerInfo}>
-                    <Text style={styles.playerHash}>
+                    <Text style={styles.playerHash} numberOfLines={1}>
                       0x{player.user_hash.substring(0, 12)}...
                     </Text>
-                    <Text style={styles.playerWakeups}>
+                    <Text style={styles.playerWakeups} numberOfLines={1}>
                       {player.total_workouts} workouts
                     </Text>
                   </View>
@@ -159,14 +159,14 @@ export default function ActiveGameView({
                   {activeGame.logs.map((log) => (
                     <View key={log.id} style={styles.logItem}>
                       <View style={styles.logHeader}>
-                        <Text style={styles.logType}>
+                        <Text style={styles.logType} numberOfLines={1}>
                           {log.event_type.toUpperCase()}
                         </Text>
-                        <Text style={styles.logTime}>
+                        <Text style={styles.logTime} numberOfLines={1}>
                           {formatDate(log.created_at)}
                         </Text>
                       </View>
-                      <Text style={styles.logMessage}>{log.message}</Text>
+                      <Text style={styles.logMessage} numberOfLines={2}>{log.message}</Text>
                     </View>
                   ))}
                 </ScrollView>
@@ -210,7 +210,7 @@ export default function ActiveGameView({
         onPress={onSubmitProof}
         disabled={hasSubmittedToday || activeGame.status !== 'active'}
       >
-        <Text style={styles.submitProofButtonText}>
+        <Text style={styles.submitProofButtonText} numberOfLines={1}>
           {activeGame.status !== 'active'
             ? `WAITING FOR PLAYERS... (${activeGame.players.length}/8)`
             : hasSubmittedToday
@@ -225,7 +225,7 @@ export default function ActiveGameView({
           style={styles.leaveGameButton}
           onPress={onLeaveGame}
         >
-          <Text style={styles.leaveGameButtonText}>
+          <Text style={styles.leaveGameButtonText} numberOfLines={1}>
             LEAVE GAME
           </Text>
         </TouchableOpacity>
@@ -259,13 +259,15 @@ const styles = StyleSheet.create({
   },
   scheduleGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    flexWrap: 'nowrap',
+    gap: 4,
     marginVertical: 12,
+    justifyContent: 'center',
   },
   scheduleRow: {
     alignItems: 'center',
-    minWidth: 40,
+    flex: 1,
+    minWidth: 0,
   },
   dayLabel: {
     fontSize: 9,
@@ -366,12 +368,14 @@ const styles = StyleSheet.create({
   playerInfo: {
     marginLeft: 12,
     flex: 1,
+    minWidth: 0,
   },
   playerHash: {
     fontSize: 13,
     fontFamily: 'Inter_700Bold',
     color: '#000',
     marginBottom: 2,
+    flexShrink: 1,
   },
   playerWakeups: {
     fontSize: 10,
@@ -408,6 +412,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
+    flexShrink: 1,
   },
   emptyText: {
     fontSize: 13,
@@ -481,6 +486,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     fontSize: 14,
     letterSpacing: 1,
+    flexShrink: 1,
   },
   leaveGameButton: {
     backgroundColor: '#FF4444',
