@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import LoginModal from '@/components/modals/LoginModal';
@@ -48,6 +49,15 @@ export default function ProfileScreen() {
 
     fetchUserProfile();
   }, [user]);
+
+  // Reload metrics whenever the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (userProfile?.hash) {
+        loadUserMetrics(userProfile.hash);
+      }
+    }, [userProfile?.hash])
+  );
 
   const loadUserMetrics = async (userHash: string) => {
     console.log('=== Loading user metrics ===');

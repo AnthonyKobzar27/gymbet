@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFocusEffect } from 'expo-router';
 import LoginModal from '@/components/modals/LoginModal';
 import ProofSubmissionModal from '@/components/modals/ProofSubmissionModal';
 import CreateGameModal from '@/components/bets/CreateGameModal';
@@ -57,6 +58,15 @@ export default function BetsScreen() {
       loadGames();
     }
   }, [userHash]);
+
+  // Reload games whenever the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (userHash) {
+        loadGames();
+      }
+    }, [userHash])
+  );
 
   const loadUserHash = async () => {
     const profile = await getUserProfile();

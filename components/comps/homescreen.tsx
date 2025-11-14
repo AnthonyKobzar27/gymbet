@@ -6,7 +6,7 @@ import Svg, { Path, Line, Circle } from 'react-native-svg';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStats, addWorkout, canLogWorkoutToday as checkCanLogWorkout } from '@/lib/homepage_utils';
 import { subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes, getProofsForValidator, checkPBFTValidation } from '@/lib/activity_log_utils';
-import { getUserActiveGame, getGameDetails } from '@/lib/game_utils';
+import { getUserActiveGame, getGameDetails, getJoinableGames, joinGame } from '@/lib/game_utils';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { UserAvatar } from '@/components/Avatar';
@@ -349,6 +349,45 @@ export default function HomeScreen() {
       loadFeed();
     }
   };
+
+  const handleJoinRandomGame = async () => {
+    if (!userHash) {
+      Alert.alert('Error', 'Please log in first');
+      return;
+    }
+
+    console.log('=== Joining Random Game ===');
+
+    // Get all joinable games
+    const games = await getJoinableGames();
+    console.log('Found joinable games:', games.length);
+
+    if (games.length === 0) {
+      Alert.alert('No Games Available', 'There are no games to join right now. Create a new game instead!');
+      return;
+    }
+
+    // Pick the first game (or randomize if you want)
+    const randomGame = games[0];
+    console.log('Joining game:', randomGame.id);
+
+    // Join the game
+    const result = await joinGame(randomGame.id, userHash);
+
+    if (result.ok) {
+      console.log('✅ Successfully joined game!');
+      Alert.alert('Success!', `Joined game with $${randomGame.stake} stake!`);
+
+      // Refresh active game status
+      await checkActiveGame();
+
+      // Navigate to bets screen
+      router.push('/bets');
+    } else {
+      console.error('Failed to join game:', result.error);
+      Alert.alert('Error', result.error?.message || 'Failed to join game');
+    }
+  };
   
   return (
     <ImageBackground
@@ -521,7 +560,7 @@ export default function HomeScreen() {
 
               <TouchableOpacity
                 style={styles.buttonSecondary}
-                onPress={() => router.push('/bets')}
+                onPress={handleJoinRandomGame}
               >
                 <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
               </TouchableOpacity>
