@@ -13,8 +13,8 @@ import {
   Linking
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import { createCheckoutSession, addTransaction } from '../../lib/stripe_utils';
-import { getBalance, deposit, withdraw } from '../../lib/transaction_utils';
+import { createCheckoutSession, requestWithdrawal } from '../../lib/stripe_utils';
+import { getBalance } from '../../lib/transaction_utils';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface PaymentModalProps {
@@ -29,6 +29,17 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
   const [loading, setLoading] = useState(false);
   const { getUserProfile } = useAuth();
   const [userHash, setUserHash] = useState<string | null>(null);
+
+  // Calculate fees
+  const calculateFees = (depositAmount: number) => {
+    const stripeFee = (depositAmount * 0.029) + 0.30;
+    const platformFee = 0.10;
+    const total = depositAmount + stripeFee + platformFee;
+    return { stripeFee, platformFee, total };
+  };
+
+  const paymentAmount = parseFloat(amount) || 0;
+  const fees = type === 'deposit' ? calculateFees(paymentAmount) : null;
 
   useEffect(() => {
     if (visible) {
@@ -67,9 +78,12 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
       return;
     }
 
-    if (type === 'deposit' && paymentAmount < 5) {
-      Alert.alert('Error', 'Minimum deposit is $5');
-      return;
+    // For deposits, check if total charge (including fees) meets Stripe minimum
+    if (type === 'deposit' && fees) {
+      if (fees.total < 0.50) {
+        Alert.alert('Error', `Total charge must be at least $0.50 (Stripe requirement)\n\nYour total: $${fees.total.toFixed(2)}`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -99,23 +113,22 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
           }, 2000);
         }
       } else {
-        // Handle withdrawal (same as before)
-        const result = await withdraw(userHash, paymentAmount);
+        // Handle withdrawal using secure Edge Function
+        const result = await requestWithdrawal(paymentAmount, userHash);
 
         if (!result.ok) {
-          throw new Error(result.error?.message || 'Withdrawal failed');
+          throw new Error(result.error || 'Withdrawal failed');
         }
 
-        await addTransaction({
-          type: 'withdrawal',
-          amount: -paymentAmount,
-          description: `Withdrew $${paymentAmount.toFixed(2)}`,
-          userHash: userHash
-        });
-
-        Alert.alert('Success', `$${paymentAmount.toFixed(2)} withdrawal requested. Funds will be available in 1-3 business days.`);
-        setAmount('');
-        loadBalance(userHash);
+        Alert.alert(
+          'Withdrawal Requested',
+          `Your withdrawal of $${paymentAmount.toFixed(2)} has been requested.\n\nFunds will be processed within 1-3 business days.`,
+          [{ text: 'OK', onPress: () => {
+            setAmount('');
+            loadBalance(userHash);
+            onClose();
+          }}]
+        );
       }
     } catch (error) {
       Alert.alert('Error', error instanceof Error ? error.message : 'Payment failed');
@@ -124,7 +137,7 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
     }
   };
 
-  const quickAmounts = type === 'deposit' ? [10, 25, 50, 100] : [5, 10, 25, 50];
+  const quickAmounts = type === 'deposit' ? [10, 25, 50, 100] : [0.50, 1, 5, 10];
 
   return (
     <Modal
@@ -172,15 +185,31 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
             ))}
           </View>
 
+          {type === 'deposit' && paymentAmount > 0 && fees && (
+            <View style={styles.feeBreakdown}>
+              <Text style={styles.feeTitle}>Fee Breakdown:</Text>
+              <View style={styles.feeRow}>
+                <Text style={styles.feeLabel}>Account Credit:</Text>
+                <Text style={styles.feeValue}>${paymentAmount.toFixed(2)}</Text>
+              </View>
+              <View style={styles.feeRow}>
+                <Text style={styles.feeLabel}>Processing Fee:</Text>
+                <Text style={styles.feeValue}>${fees.stripeFee.toFixed(2)}</Text>
+              </View>
+              <View style={styles.feeRow}>
+                <Text style={styles.feeLabel}>Platform Fee:</Text>
+                <Text style={styles.feeValue}>${fees.platformFee.toFixed(2)}</Text>
+              </View>
+              <View style={[styles.feeRow, styles.feeTotal]}>
+                <Text style={styles.feeTotalLabel}>Total Charge:</Text>
+                <Text style={styles.feeTotalValue}>${fees.total.toFixed(2)}</Text>
+              </View>
+            </View>
+          )}
+
           {type === 'deposit' && (
             <Text style={styles.disclaimer}>
               You&apos;ll be redirected to secure Stripe checkout
-            </Text>
-          )}
-
-          {type === 'withdraw' && (
-            <Text style={styles.disclaimer}>
-              ⏱️ Withdrawals typically process within 1-3 business days to your bank account.
             </Text>
           )}
 
@@ -292,6 +321,51 @@ const styles = StyleSheet.create({
   quickAmountText: {
     fontSize: 14,
     fontFamily: 'Inter_700Bold',
+    color: '#000',
+  },
+  feeBreakdown: {
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#000',
+    padding: 12,
+    marginBottom: 16,
+    width: '100%',
+  },
+  feeTitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+    marginBottom: 8,
+  },
+  feeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  feeLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  feeValue: {
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#000',
+  },
+  feeTotal: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 2,
+    borderTopColor: '#000',
+  },
+  feeTotalLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000',
+  },
+  feeTotalValue: {
+    fontSize: 13,
+    fontFamily: 'Inter_800ExtraBold',
     color: '#000',
   },
   disclaimer: {

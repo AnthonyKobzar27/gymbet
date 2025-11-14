@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import LoginModal from '@/components/modals/LoginModal';
+import PaymentModal from '@/components/modals/PaymentModal';
 import { getStats } from '@/lib/homepage_utils';
 import { getBalance } from '@/lib/transaction_utils';
 import { getUserGames, getUserActiveGame, getGameDetails, GameWithPlayers } from '@/lib/game_utils';
@@ -23,6 +24,7 @@ export default function ProfileScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
+  const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
 
   // User metrics
   const [balance, setBalance] = useState(0);
@@ -232,6 +234,22 @@ export default function ProfileScreen() {
                   )}
                 </TouchableOpacity>
 
+                {/* Balance Card */}
+                <View style={styles.balanceCard}>
+                  <View style={styles.cardInner}>
+                    <Text style={styles.balanceLabel}>ACCOUNT BALANCE</Text>
+                    <Text style={styles.balanceValue}>${balance.toFixed(2)}</Text>
+                  </View>
+                </View>
+
+                {/* Withdraw Button */}
+                <TouchableOpacity
+                  style={styles.withdrawButton}
+                  onPress={() => setWithdrawModalVisible(true)}
+                >
+                  <Text style={styles.withdrawButtonText}>WITHDRAW FUNDS</Text>
+                </TouchableOpacity>
+
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -240,6 +258,18 @@ export default function ProfileScreen() {
       <LoginModal
         visible={loginModalVisible}
         onClose={() => setLoginModalVisible(false)}
+      />
+
+      <PaymentModal
+        visible={withdrawModalVisible}
+        onClose={() => {
+          setWithdrawModalVisible(false);
+          // Reload balance after withdrawal
+          if (userProfile?.hash) {
+            loadUserMetrics(userProfile.hash);
+          }
+        }}
+        type="withdraw"
       />
     </>
   );
@@ -355,6 +385,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
     color: '#666666',
+  },
+
+  // Balance Card
+  balanceCard: {
+    backgroundColor: '#fdcff3',
+    borderWidth: 4,
+    borderColor: '#000000',
+    marginTop: 24,
+    marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 6,
+  },
+  balanceLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#666666',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  balanceValue: {
+    fontSize: 40,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+  },
+
+  // Withdraw Button
+  withdrawButton: {
+    backgroundColor: '#000000',
+    borderWidth: 4,
+    borderColor: '#000000',
+    paddingVertical: 18,
+    marginBottom: 24,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  withdrawButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 1,
   },
 
   // Metrics

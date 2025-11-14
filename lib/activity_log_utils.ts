@@ -489,6 +489,60 @@ export async function checkPBFTValidation(activityLogId: number): Promise<{
           } else {
             console.error('❌ Failed to redistribute slashed stake:', redistributeResult.error);
           }
+
+          // ========== CHECK IF 2 PLAYERS FAILED - END GAME ==========
+          console.log('=== Checking for game ending condition (2 failed verifications) ===');
+
+          // Count eliminated players in this game
+          const { data: eliminatedPlayers } = await supabase
+            .from('game_players')
+            .select('user_hash')
+            .eq('game_id', fullLog.game_id)
+            .eq('status', 'eliminated');
+
+          const eliminatedCount = eliminatedPlayers?.length || 0;
+          console.log(`Eliminated players count: ${eliminatedCount}`);
+
+          if (eliminatedCount >= 2) {
+            console.log('🏁 2 players have failed verification! Ending game...');
+
+            // Get all remaining active players
+            const { data: activePlayers } = await supabase
+              .from('game_players')
+              .select('user_hash')
+              .eq('game_id', fullLog.game_id)
+              .eq('status', 'active');
+
+            if (activePlayers && activePlayers.length > 0) {
+              // Mark all active players as winners
+              await supabase
+                .from('game_players')
+                .update({ status: 'winner' })
+                .eq('game_id', fullLog.game_id)
+                .eq('status', 'active');
+
+              console.log(`✅ Marked ${activePlayers.length} remaining players as winners`);
+
+              // Add game ending log
+              await addGameLog(
+                fullLog.game_id,
+                null,
+                `🏁 Game ended! 2 players failed verification. Remaining ${activePlayers.length} players win!`,
+                'game_end'
+              );
+
+              // End the game
+              await supabase
+                .from('games')
+                .update({
+                  status: 'completed',
+                  ended_at: new Date().toISOString()
+                })
+                .eq('id', fullLog.game_id);
+
+              console.log(`✅ Game ${fullLog.game_id} completed due to 2 failed verifications`);
+            }
+          }
         } else {
           console.log('Player is not active in game, skipping stake slashing');
         }

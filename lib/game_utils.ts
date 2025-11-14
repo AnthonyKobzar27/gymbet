@@ -804,14 +804,54 @@ export async function redistributeStake(
     'elimination'
   );
 
-  // Check if only one player remains - declare winner and end game
+  // Check game ending conditions
   const { data: remainingPlayers } = await supabase
     .from('game_players')
     .select('user_hash')
     .eq('game_id', gameId)
     .eq('status', 'active');
 
-  if (remainingPlayers && remainingPlayers.length === 1) {
+  const { data: eliminatedPlayers } = await supabase
+    .from('game_players')
+    .select('user_hash')
+    .eq('game_id', gameId)
+    .eq('status', 'eliminated');
+
+  const eliminatedCount = eliminatedPlayers?.length || 0;
+  console.log(`Eliminated players: ${eliminatedCount}, Remaining players: ${remainingPlayers?.length || 0}`);
+
+  // Game ends if 2 or more players are eliminated OR only 1 player remains
+  if (eliminatedCount >= 2) {
+    console.log('🏁 2 or more players eliminated! Game ending...');
+
+    if (remainingPlayers && remainingPlayers.length > 0) {
+      // Mark all remaining active players as winners
+      await supabase
+        .from('game_players')
+        .update({ status: 'winner' })
+        .eq('game_id', gameId)
+        .eq('status', 'active');
+
+      // End game
+      await supabase
+        .from('games')
+        .update({
+          status: 'completed',
+          ended_at: new Date().toISOString()
+        })
+        .eq('id', gameId);
+
+      // Add game end log
+      await addGameLog(
+        gameId,
+        null,
+        `🏁 Game ended! ${eliminatedCount} players eliminated. ${remainingPlayers.length} winners!`,
+        'game_end'
+      );
+
+      console.log(`Game ${gameId} completed. ${remainingPlayers.length} winners due to ${eliminatedCount} eliminations`);
+    }
+  } else if (remainingPlayers && remainingPlayers.length === 1) {
     const winner = remainingPlayers[0];
     console.log(`Only one player remains! Winner: ${winner.user_hash}`);
 

@@ -29,8 +29,8 @@ export default function DepositAmountModal({ visible, onClose, onSelectAmount }:
       return;
     }
 
-    if (amount < 5) {
-      Alert.alert('Error', 'Minimum deposit is $5');
+    if (amount < 0.5) {
+      Alert.alert('Error', 'Minimum deposit is $0.5');
       return;
     }
 

@@ -104,6 +104,41 @@ export async function addTransaction(params: {
 }
 
 /**
+ * Request a withdrawal (secure - uses Edge Function)
+ * Amount should be in dollars (e.g., 50 for $50)
+ */
+export async function requestWithdrawal(amount: number, userHash: string): Promise<{ ok: boolean; error?: string; withdrawal_id?: string }> {
+  console.log('=== requestWithdrawal ===');
+  console.log('Amount:', amount);
+  console.log('User hash:', userHash);
+
+  try {
+    // Call Supabase Edge Function to request withdrawal
+    const { data, error } = await supabase.functions.invoke('request-withdrawal', {
+      body: {
+        amount: amount,
+        userHash: userHash
+      },
+    });
+
+    if (error) {
+      console.error('Failed to request withdrawal:', error);
+      return { ok: false, error: error.message || 'Failed to request withdrawal' };
+    }
+
+    if (!data || !data.success) {
+      return { ok: false, error: data?.error || 'Withdrawal request failed' };
+    }
+
+    console.log('Withdrawal requested successfully:', data.withdrawal_id);
+    return { ok: true, withdrawal_id: data.withdrawal_id };
+  } catch (error) {
+    console.error('Error requesting withdrawal:', error);
+    return { ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+/**
  * Get user's transaction history
  */
 export async function getTransactions(userHash: string): Promise<any[]> {
