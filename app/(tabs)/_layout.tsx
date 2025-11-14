@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
 import { Modal, TouchableOpacity, Text, StyleSheet, View, Platform} from 'react-native';
-// import { useWallet } from '../providers/WalletConnectProvider';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
@@ -14,7 +13,6 @@ import { getBalance } from '@/lib/transaction_utils';
 import { useFocusEffect } from '@react-navigation/native';
 
 
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
   color: string;
@@ -38,14 +36,12 @@ export function HeaderRight() {
     }
   }, [user]);
 
-  // Load balance whenever userProfile changes
   useEffect(() => {
     if (userProfile?.hash) {
       loadBalance();
     }
   }, [userProfile]);
 
-  // Auto-reload balance every 3 seconds when user is logged in
   useEffect(() => {
     if (!userProfile?.hash) return;
 

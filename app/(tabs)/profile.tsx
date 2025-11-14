@@ -27,7 +27,7 @@ export default function ProfileScreen() {
   // User metrics
   const [balance, setBalance] = useState(0);
   const [totalProfit, setTotalProfit] = useState(0);
-  const [sleepLogged, setSleepLogged] = useState(0);
+  const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [gamesPlayed, setGamesPlayed] = useState(0);
 
   // Active game and logs
@@ -60,7 +60,7 @@ export default function ProfileScreen() {
     const stats = await getStats(userHash);
     console.log('Stats:', stats);
     setTotalProfit(stats.profitMade);
-    setSleepLogged(stats.sleepAverage); // Use average instead of total
+    setTotalWorkouts(stats.workoutLogged); // Total workouts completed
 
     // Load games count
     const games = await getUserGames(userHash);
@@ -201,11 +201,11 @@ export default function ProfileScreen() {
                     </View>
                   </View>
 
-                  {/* Average Sleep Card */}
+                  {/* Total Workouts Card */}
                   <View style={styles.metricCard}>
                     <View style={styles.cardInner}>
-                      <Text style={styles.metricLabel}>AVG SLEEP / DAY</Text>
-                      <Text style={styles.metricValue}>{sleepLogged}h</Text>
+                      <Text style={styles.metricLabel}>TOTAL WORKOUTS</Text>
+                      <Text style={styles.metricValue}>{totalWorkouts}</Text>
                     </View>
                   </View>
 
