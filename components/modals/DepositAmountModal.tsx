@@ -34,8 +34,8 @@ export default function DepositAmountModal({ visible, onClose, onSelectAmount }:
       return;
     }
 
-    if (amount > 10000) {
-      Alert.alert('Error', 'Maximum deposit is $10,000');
+    if (amount > 100) {
+      Alert.alert('Error', 'Maximum deposit is $100');
       return;
     }
 

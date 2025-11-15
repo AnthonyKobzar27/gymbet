@@ -8,30 +8,24 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { Platform } from 'react-native';
-// Conditionally load Stripe on native; provide a no-op provider on web
 let StripeProvider: React.ComponentType<any>;
 if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
 } else {
   StripeProvider = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 }
 import { AuthProvider } from '@/contexts/AuthContext';
 
-// Stripe publishable key - replace with your actual key
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_your_key_here';
 
 export {
-  // Catch any errors thrown by the Layout component.
   ErrorBoundary,
 } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -44,7 +38,6 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
@@ -68,7 +61,7 @@ function RootLayoutNav() {
   return (
     <StripeProvider
       publishableKey={STRIPE_PUBLISHABLE_KEY}
-      merchantIdentifier="merchant.com.snooze" // Required for Apple Pay
+      merchantIdentifier="merchant.com.snooze"
     >
       <AuthProvider>
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -27,13 +27,11 @@ export default function ProfileScreen() {
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
 
-  // User metrics
   const [balance, setBalance] = useState(0);
   const [totalProfit, setTotalProfit] = useState(0);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [gamesPlayed, setGamesPlayed] = useState(0);
 
-  // Active game and logs
   const [activeGame, setActiveGame] = useState<GameWithPlayers | null>(null);
 
   useEffect(() => {
@@ -50,7 +48,6 @@ export default function ProfileScreen() {
     fetchUserProfile();
   }, [user]);
 
-  // Reload metrics whenever the screen comes into focus
   useFocusEffect(
     useCallback(() => {
       if (userProfile?.hash) {
@@ -63,30 +60,20 @@ export default function ProfileScreen() {
     console.log('=== Loading user metrics ===');
     console.log('User hash:', userHash);
 
-    // Load balance
     const userBalance = await getBalance(userHash);
-    console.log('Balance:', userBalance);
     setBalance(userBalance);
 
-    // Load stats from homepage
     const stats = await getStats(userHash);
     console.log('Stats:', stats);
     setTotalProfit(stats.profitMade);
-    setTotalWorkouts(stats.workoutLogged); // Total workouts completed
+    setTotalWorkouts(stats.workoutLogged); 
 
-    // Load games count
     const games = await getUserGames(userHash);
-    console.log('Games played:', games.length);
     setGamesPlayed(games.length);
 
-    // Load active game and its logs
     const activeGameData = await getUserActiveGame(userHash);
     if (activeGameData) {
       const gameDetails = await getGameDetails(activeGameData.id);
-      console.log('Active game loaded for profile:', {
-        id: gameDetails?.id,
-        logsCount: gameDetails?.logs.length,
-      });
       setActiveGame(gameDetails);
     } else {
       setActiveGame(null);
@@ -274,7 +261,6 @@ export default function ProfileScreen() {
         visible={withdrawModalVisible}
         onClose={() => {
           setWithdrawModalVisible(false);
-          // Reload balance after withdrawal
           if (userProfile?.hash) {
             loadUserMetrics(userProfile.hash);
           }

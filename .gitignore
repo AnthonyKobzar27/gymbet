@@ -1,6 +1,43 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 .env
 
+/database
+
+/database/
+
+.vscode
+
+.vscode/
+.vscode/*.ts
+.vscode/*.js
+.vscode/*.json
+.vscode/*.toml
+.vscode/*.yaml
+.vscode/*.yml
+.vscode/*.txt
+/supabase
+/supabase/
+/supabase/*.ts
+/supabase/*.js
+/supabase/*.json
+/supabase/*.toml
+/supabase/*.yaml
+/supabase/*.yml
+/supabase/*.txt
+
+.gitignore*
+.gitignore
+.gitignore*
+.gitignore
+.gitignore*
+.gitignores
+
+debug-auth.tsx
+/scripts
+
+/scripts/
+
+/scripts/*.js
 
 # dependencies
 node_modules/

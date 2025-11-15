@@ -21,10 +21,6 @@ export default function CreateGameModal({ visible, onClose, onGameCreated }: Cre
   const [newGameStake, setNewGameStake] = useState('10');
 
   const handleCreateGame = async () => {
-    console.log('=== handleCreateGame ===');
-    console.log('Weekly schedule:', newGameSchedule);
-    console.log('Stake:', newGameStake);
-
     if (!newGameStake) {
       Alert.alert('Error', 'Please enter a stake amount');
       return;
@@ -36,11 +32,9 @@ export default function CreateGameModal({ visible, onClose, onGameCreated }: Cre
       return;
     }
 
-    console.log('Creating game...');
     const result = await createGame(newGameSchedule, stake);
 
     if (result.ok && result.game) {
-      console.log('Game created successfully:', result.game.id);
       Alert.alert('Success', 'Game created! You can now join it.');
       onClose();
       setNewGameSchedule({

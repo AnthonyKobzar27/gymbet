@@ -15,8 +15,8 @@ export interface WeeklySchedule {
 
 export interface Game {
   id: string;
-  split_type: string;  // Keep this for database compatibility
-  weekly_schedule?: WeeklySchedule;  // Add this for weekly schedule
+  split_type: string;
+  weekly_schedule?: WeeklySchedule;
   stake: number;
   status: 'joinable' | 'active' | 'completed';
   player_count: number;
@@ -61,19 +61,33 @@ export interface GameWithPlayers extends Game {
   logs: GameLog[];
 }
 
-/**
- * Create a new game
- */
 export async function createGame(
   weeklySchedule: WeeklySchedule,
   stake: number
 ): Promise<{ ok: boolean; game?: Game; error?: any }> {
-  // Store weekly schedule as JSON string in split_type field
+  if (!stake || typeof stake !== 'number' || !isFinite(stake)) {
+    return { ok: false, error: { message: 'Invalid stake amount' } };
+  }
+
+  if (stake < 0.50) {
+    return { ok: false, error: { message: 'Minimum stake is $0.50' } };
+  }
+
+  if (stake > 100) {
+    return { ok: false, error: { message: 'Maximum stake is $100' } };
+  }
+
+  const roundedStake = Math.round(stake * 100) / 100;
+
+  if (!weeklySchedule || typeof weeklySchedule !== 'object') {
+    return { ok: false, error: { message: 'Invalid weekly schedule' } };
+  }
+
   const { data, error } = await supabase
     .from('games')
     .insert({
       split_type: JSON.stringify(weeklySchedule),
-      stake: stake,
+      stake: roundedStake,
       status: 'joinable',
       player_count: 0,
     })
@@ -85,7 +99,6 @@ export async function createGame(
     return { ok: false, error };
   }
 
-  // Parse the weekly schedule back out
   const game = data as Game;
   try {
     game.weekly_schedule = JSON.parse(game.split_type);
@@ -104,9 +117,7 @@ export async function createGame(
   return { ok: true, game };
 }
 
-/**
- * Get all joinable games (not full and not started)
- */
+
 export async function getJoinableGames(): Promise<Game[]> {
   const { data, error } = await supabase
     .from('games')
@@ -120,13 +131,11 @@ export async function getJoinableGames(): Promise<Game[]> {
     return [];
   }
 
-  // Parse weekly schedules
   const games = (data as Game[]) || [];
   games.forEach(game => {
     try {
       game.weekly_schedule = JSON.parse(game.split_type);
     } catch (e) {
-      // If it's not JSON, treat it as a single split type for all days
       game.weekly_schedule = {
         monday: game.split_type,
         tuesday: game.split_type,
@@ -142,14 +151,11 @@ export async function getJoinableGames(): Promise<Game[]> {
   return games;
 }
 
-/**
- * Join a game
- */
 export async function joinGame(
   gameId: string,
   userHash: string
 ): Promise<{ ok: boolean; error?: any }> {
-  // Check if user is already in the game
+  
   const { data: existingPlayer } = await supabase
     .from('game_players')
     .select('id')
@@ -161,7 +167,6 @@ export async function joinGame(
     return { ok: false, error: { message: 'Already in this game' } };
   }
 
-  // Check current player count and get stake amount
   const { data: game } = await supabase
     .from('games')
     .select('player_count, status, stake')
@@ -180,34 +185,37 @@ export async function joinGame(
     return { ok: false, error: { message: 'Game is full' } };
   }
 
-  // Check user balance
   const userBalance = await getBalance(userHash);
-  console.log('User balance:', userBalance, 'Game stake:', game.stake);
 
   if (userBalance < game.stake) {
     return { ok: false, error: { message: `Insufficient balance. Need $${game.stake.toFixed(2)}, but you have $${userBalance.toFixed(2)}` } };
   }
 
-  // Deduct stake from balance
-  console.log('Withdrawing stake:', game.stake);
-  const withdrawResult = await withdraw(userHash, game.stake);
-  console.log('Withdraw result:', withdrawResult);
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('hash', userHash)
+    .single();
 
-  if (!withdrawResult.ok) {
-    return { ok: false, error: { message: 'Failed to process stake payment: ' + (withdrawResult.error?.message || 'Unknown error') } };
+  if (profileError || !profile?.user_id) {
+    console.error('Failed to get user_id:', profileError);
+    return { ok: false, error: { message: 'Failed to get user profile' } };
   }
 
-  // Record transaction
-  console.log('Recording transaction...');
-  const txResult = await addTransaction({
-    type: 'stake',
-    amount: -game.stake,
-    description: `Staked $${game.stake.toFixed(2)} for game ${gameId}`,
-    userHash: userHash
-  });
-  console.log('Transaction recorded:', txResult);
+  const { data: updateResult, error: updateError } = await supabase
+    .rpc('update_balance_atomic', {
+      p_user_id: profile.user_id,
+      p_user_hash: userHash,
+      p_delta: -game.stake,
+      p_transaction_type: 'stake',
+      p_description: `Staked $${game.stake.toFixed(2)} for game ${gameId}`
+    });
 
-  // Add player to game
+  if (updateError || !updateResult?.success) {
+    console.error('Failed to deduct stake:', updateError || updateResult?.error);
+    return { ok: false, error: { message: 'Failed to process stake payment: ' + (updateError?.message || updateResult?.error || 'Unknown error') } };
+  }
+
   const { error: insertError } = await supabase
     .from('game_players')
     .insert({
@@ -219,10 +227,22 @@ export async function joinGame(
 
   if (insertError) {
     console.error('Failed to join game:', insertError);
+    const { error: refundError } = await supabase
+      .rpc('update_balance_atomic', {
+        p_user_id: profile.user_id,
+        p_user_hash: userHash,
+        p_delta: game.stake,
+        p_transaction_type: 'deposit',
+        p_description: `Refund: Failed to join game ${gameId}`
+      });
+    
+    if (refundError) {
+      console.error('❌ CRITICAL: Failed to refund stake after insert failure!', refundError);
+    }
+    
     return { ok: false, error: insertError };
   }
 
-  // Increment player count
   const newPlayerCount = game.player_count + 1;
   const newStatus = newPlayerCount === 8 ? 'active' : 'joinable';
   const updateData: any = {
@@ -234,17 +254,16 @@ export async function joinGame(
     updateData.started_at = new Date().toISOString();
   }
 
-  const { error: updateError } = await supabase
+  const { error: gameUpdateError } = await supabase
     .from('games')
     .update(updateData)
     .eq('id', gameId);
 
-  if (updateError) {
-    console.error('Failed to update game:', updateError);
-    return { ok: false, error: updateError };
+  if (gameUpdateError) {
+    console.error('Failed to update game:', gameUpdateError);
+    return { ok: false, error: gameUpdateError };
   }
 
-  // Add log entry
   await addGameLog(
     gameId,
     userHash,
@@ -252,7 +271,14 @@ export async function joinGame(
     'join'
   );
 
-  // If game is now full, add game start log
+  const { addActivityLog } = await import('@/lib/activity_log_utils');
+  await addActivityLog(
+    userHash,
+    userHash,
+    `joined a game with $${game.stake.toFixed(2)} stake`,
+    'bet'
+  );
+
   if (newStatus === 'active') {
     await addGameLog(
       gameId,
@@ -260,23 +286,18 @@ export async function joinGame(
       'Game started! All 8 players have joined.',
       'game_start'
     );
+
+    const { notifyGameStart } = await import('@/lib/notification_utils');
+    await notifyGameStart();
   }
 
   return { ok: true };
 }
 
-/**
- * Leave a game and get refunded (only works before game starts)
- */
 export async function leaveGame(
   gameId: string,
   userHash: string
 ): Promise<{ ok: boolean; error?: any; refunded?: number }> {
-  console.log('=== leaveGame ===');
-  console.log('Game ID:', gameId);
-  console.log('User hash:', userHash);
-
-  // Get game details
   const { data: game } = await supabase
     .from('games')
     .select('status, stake, player_count')
@@ -287,12 +308,10 @@ export async function leaveGame(
     return { ok: false, error: { message: 'Game not found' } };
   }
 
-  // Can only leave if game hasn't started
   if (game.status !== 'joinable') {
     return { ok: false, error: { message: 'Cannot leave a game that has already started' } };
   }
 
-  // Check if user is in the game
   const { data: player } = await supabase
     .from('game_players')
     .select('id')
@@ -304,26 +323,29 @@ export async function leaveGame(
     return { ok: false, error: { message: 'You are not in this game' } };
   }
 
-  // Refund the stake
-  console.log('Refunding stake:', game.stake, 'to user:', userHash);
-  const refundResult = await deposit(userHash, game.stake);
-  console.log('Refund result:', refundResult);
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('hash', userHash)
+    .single();
 
-  if (!refundResult.ok) {
-    return { ok: false, error: { message: 'Failed to refund stake: ' + (refundResult.error?.message || 'Unknown error') } };
+  if (profileError || !profile?.user_id) {
+    return { ok: false, error: { message: 'Failed to get user profile' } };
   }
 
-  // Record refund transaction
-  console.log('Recording refund transaction...');
-  const txResult = await addTransaction({
-    type: 'deposit',
-    amount: game.stake,
-    description: `Refund from leaving game ${gameId}`,
-    userHash: userHash
-  });
-  console.log('Refund transaction recorded:', txResult);
+  const { data: updateResult, error: refundError } = await supabase
+    .rpc('update_balance_atomic', {
+      p_user_id: profile.user_id,
+      p_user_hash: userHash,
+      p_delta: game.stake,
+      p_transaction_type: 'deposit',
+      p_description: `Refund from leaving game ${gameId}`
+    });
 
-  // Remove player from game
+  if (refundError || !updateResult?.success) {
+    return { ok: false, error: { message: 'Failed to refund stake' } };
+  }
+
   const { error: deleteError } = await supabase
     .from('game_players')
     .delete()
@@ -335,7 +357,6 @@ export async function leaveGame(
     return { ok: false, error: deleteError };
   }
 
-  // Decrement player count
   const { error: updateError } = await supabase
     .from('games')
     .update({
@@ -348,21 +369,24 @@ export async function leaveGame(
     return { ok: false, error: updateError };
   }
 
-  // Add log entry
   await addGameLog(
     gameId,
     userHash,
     `Player 0x${userHash.substring(0, 8)} left the game`,
-    'join'
+    'chat'
   );
 
-  console.log('Successfully left game and refunded:', game.stake);
+  const { addActivityLog } = await import('@/lib/activity_log_utils');
+  await addActivityLog(
+    userHash,
+    userHash,
+    `left a game and received $${game.stake.toFixed(2)} refund`,
+    'leave'
+  );
+
   return { ok: true, refunded: game.stake };
 }
 
-/**
- * Get game details with players and logs
- */
 export async function getGameDetails(gameId: string): Promise<GameWithPlayers | null> {
   const { data: game, error: gameError } = await supabase
     .from('games')
@@ -375,7 +399,6 @@ export async function getGameDetails(gameId: string): Promise<GameWithPlayers | 
     return null;
   }
 
-  // Parse weekly schedule
   const parsedGame = game as Game;
   try {
     parsedGame.weekly_schedule = JSON.parse(parsedGame.split_type);
@@ -421,9 +444,6 @@ export async function getGameDetails(gameId: string): Promise<GameWithPlayers | 
   } as GameWithPlayers;
 }
 
-/**
- * Get all games for a user (active and completed)
- */
 export async function getUserGames(userHash: string): Promise<Game[]> {
   const { data, error } = await supabase
     .from('game_players')
@@ -436,14 +456,10 @@ export async function getUserGames(userHash: string): Promise<Game[]> {
     return [];
   }
 
-  // Extract games from the joined query
   const games = data?.map((item: any) => item.games).filter(Boolean) || [];
   return games as Game[];
 }
 
-/**
- * Get user's active game (only one active game allowed at a time)
- */
 export async function getUserActiveGame(userHash: string): Promise<Game | null> {
   const { data, error } = await supabase
     .from('game_players')
@@ -456,7 +472,6 @@ export async function getUserActiveGame(userHash: string): Promise<Game | null> 
     return null;
   }
 
-  // Check if the game itself is active or joinable (not completed)
   const game = (data as any).games as Game;
   if (game && (game.status === 'active' || game.status === 'joinable')) {
     return game;
@@ -465,9 +480,6 @@ export async function getUserActiveGame(userHash: string): Promise<Game | null> 
   return null;
 }
 
-/**
- * Add a log entry to a game
- */
 export async function addGameLog(
   gameId: string,
   userHash: string | null,
@@ -491,19 +503,11 @@ export async function addGameLog(
   return true;
 }
 
-/**
- * Send a chat message in a game
- */
 export async function sendChatMessage(
   gameId: string,
   userHash: string,
   message: string
 ): Promise<{ ok: boolean; error?: any }> {
-  console.log('=== sendChatMessage ===');
-  console.log('Game ID:', gameId);
-  console.log('User hash:', userHash);
-  console.log('Message:', message);
-
   const { error } = await supabase
     .from('game_logs')
     .insert({
@@ -518,13 +522,9 @@ export async function sendChatMessage(
     return { ok: false, error };
   }
 
-  console.log('Chat message sent successfully');
   return { ok: true };
 }
 
-/**
- * Submit workout proof (photo) with photo upload to Supabase Storage
- */
 export async function submitWakeupProof(
   gameId: string,
   userHash: string,
@@ -532,16 +532,9 @@ export async function submitWakeupProof(
   caption: string,
   splitType: string
 ): Promise<{ ok: boolean; isOnTime?: boolean; error?: any }> {
-  console.log('=== submitWorkoutProof ===');
-  console.log('Game ID:', gameId);
-  console.log('User hash:', userHash);
-  console.log('Photo URI:', photoUri);
-  console.log('Caption:', caption);
-
   const submissionDate = new Date().toISOString().split('T')[0];
   const submittedAt = new Date();
 
-  // Check if already submitted today
   const { data: existing } = await supabase
     .from('game_submissions')
     .select('id')
@@ -555,17 +548,20 @@ export async function submitWakeupProof(
     return { ok: false, error: { message: 'Already submitted today' } };
   }
 
-  // For workout proofs, just check if it's submitted on the same day (always on time if same day)
-  const isOnTime = true; // Workouts are flexible throughout the day
-  console.log('Is on time:', isOnTime, 'Submitted at:', submittedAt);
+  const isOnTime = true;
 
-  // Upload photo to Supabase Storage
-  console.log('Uploading photo to storage...');
   const fileName = `${gameId}/${userHash}/${submissionDate}-${Date.now()}.jpg`;
 
-  // Convert photo URI to ArrayBuffer for React Native
   const response = await fetch(photoUri);
   const arrayBuffer = await response.arrayBuffer();
+
+  if (arrayBuffer.byteLength > 10 * 1024 * 1024) {
+    return { ok: false, error: { message: 'Image must be less than 10MB' } };
+  }
+
+  if (arrayBuffer.byteLength < 1000) {
+    return { ok: false, error: { message: 'Invalid image file' } };
+  }
 
   const { error: uploadError } = await supabase.storage
     .from('workout-proofs')
@@ -579,14 +575,10 @@ export async function submitWakeupProof(
     return { ok: false, error: uploadError };
   }
 
-  // Get public URL
   const { data: { publicUrl } } = supabase.storage
     .from('workout-proofs')
     .getPublicUrl(fileName);
 
-  console.log('Photo uploaded successfully:', publicUrl);
-
-  // Insert submission
   const { error: insertError } = await supabase
     .from('game_submissions')
     .insert({
@@ -604,7 +596,6 @@ export async function submitWakeupProof(
     return { ok: false, error: insertError };
   }
 
-  // If on time, increment total_workouts in game_players
   if (isOnTime) {
     const { data: player } = await supabase
       .from('game_players')
@@ -625,8 +616,6 @@ export async function submitWakeupProof(
     }
   }
 
-  // Increment workout count in home_page_top (profile stats)
-  console.log('=== Incrementing workout count in home_page_top ===');
   const { data: homeStats } = await supabase
     .from('home_page_top')
     .select('workout_logged, workout_history')
@@ -645,13 +634,8 @@ export async function submitWakeupProof(
         current_split_day: caption || 'Workout',
       })
       .eq('user_hash', userHash);
-
-    console.log('✅ Workout count incremented to:', newWorkoutCount);
-  } else {
-    console.warn('⚠️ No home_page_top entry found for user');
   }
 
-  // Add proof log entry with photo URL
   const proofMessage = caption ? `"${caption}"` : 'submitted workout proof';
   await supabase
     .from('game_logs')
@@ -663,7 +647,6 @@ export async function submitWakeupProof(
       photo_url: publicUrl,
     });
 
-  // Add to activity feed with verification status
   const verificationEmoji = isOnTime ? '✓' : '✗';
   const timeString = submittedAt.toLocaleTimeString('en-US', {
     hour: '2-digit',
@@ -672,66 +655,41 @@ export async function submitWakeupProof(
   });
   const activityMessage = `${verificationEmoji} Submitted workout proof at ${timeString} - "${caption}"`;
 
-  console.log('=== Adding to activity feed ===');
-  console.log('Activity message:', activityMessage);
-  console.log('Photo URL:', publicUrl);
-
   const activityResult = await addActivityLogWithId(
     userHash,
     userHash,
     activityMessage,
     'workout',
     publicUrl,
-    gameId  // Pass game_id for PBFT rejection stake slashing
+    gameId
   );
 
   if (!activityResult.ok || !activityResult.id) {
     console.error('⚠️ WARNING: Failed to add to activity feed! Check RLS on activity_log table');
   } else {
-    console.log('✅ Successfully added to activity feed! ID:', activityResult.id);
-
-    // ========== PBFT PROOF DISTRIBUTION ==========
-    console.log('=== Starting PBFT proof distribution ===');
-
-    // Get random validators (up to 100, excluding cohort members)
     const validators = await getRandomValidators(userHash, gameId, 100);
-    console.log('Selected validators:', validators.length);
 
     if (validators.length > 0) {
-      // Distribute proof to validators
       const distributionResult = await distributeProofToValidators(
         activityResult.id,
         validators
       );
 
       if (distributionResult.ok) {
-        console.log('✅ Proof distributed to', validators.length, 'validators');
-        console.log('Required approvals:', Math.ceil((validators.length * 2) / 3));
       } else {
         console.error('⚠️ Failed to distribute proof:', distributionResult.error);
       }
     } else {
-      console.warn('⚠️ No validators available for proof distribution');
     }
   }
 
-  console.log('Proof submitted successfully!');
   return { ok: true, isOnTime };
 }
 
-/**
- * Redistribute stake when a player misses their proof deadline
- * Distributes stake evenly to all remaining active players
- */
 export async function redistributeStake(
   gameId: string,
   eliminatedUserHash: string
 ): Promise<{ ok: boolean; error?: any }> {
-  console.log('=== redistributeStake ===');
-  console.log('Game ID:', gameId);
-  console.log('Eliminated user:', eliminatedUserHash);
-
-  // Get the game stake amount
   const { data: game } = await supabase
     .from('games')
     .select('stake')
@@ -743,9 +701,7 @@ export async function redistributeStake(
   }
 
   const stakeAmount = game.stake;
-  console.log('Stake amount:', stakeAmount);
 
-  // Get all active players in the game (excluding the eliminated player)
   const { data: activePlayers, error: playersError } = await supabase
     .from('game_players')
     .select('user_hash')
@@ -758,15 +714,9 @@ export async function redistributeStake(
     return { ok: false, error: playersError || { message: 'No active players to distribute to' } };
   }
 
-  console.log('Active players:', activePlayers.length);
-
-  // Calculate amount per player
   const amountPerPlayer = stakeAmount / activePlayers.length;
-  console.log('Amount per player:', amountPerPlayer);
 
-  // Distribute to each active player
   for (const player of activePlayers) {
-    // Add to player's balance
     const depositResult = await deposit(player.user_hash, amountPerPlayer);
 
     if (!depositResult.ok) {
@@ -774,18 +724,14 @@ export async function redistributeStake(
       continue;
     }
 
-    // Record transaction
     await addTransaction({
       type: 'payout',
       amount: amountPerPlayer,
       description: `Payout from eliminated player in game ${gameId}`,
       userHash: player.user_hash
     });
-
-    console.log('Distributed', amountPerPlayer, 'to', player.user_hash);
   }
 
-  // Mark eliminated player as eliminated
   const { error: updateError } = await supabase
     .from('game_players')
     .update({ status: 'eliminated' })
@@ -796,7 +742,6 @@ export async function redistributeStake(
     console.error('Failed to update eliminated player status:', updateError);
   }
 
-  // Add elimination log
   await addGameLog(
     gameId,
     eliminatedUserHash,
@@ -804,7 +749,14 @@ export async function redistributeStake(
     'elimination'
   );
 
-  // Check game ending conditions
+  const { addActivityLog } = await import('@/lib/activity_log_utils');
+  await addActivityLog(
+    eliminatedUserHash,
+    eliminatedUserHash,
+    `lost a game and was eliminated! Lost $${stakeAmount.toFixed(2)} stake`,
+    'loss'
+  );
+
   const { data: remainingPlayers } = await supabase
     .from('game_players')
     .select('user_hash')
@@ -818,21 +770,67 @@ export async function redistributeStake(
     .eq('status', 'eliminated');
 
   const eliminatedCount = eliminatedPlayers?.length || 0;
-  console.log(`Eliminated players: ${eliminatedCount}, Remaining players: ${remainingPlayers?.length || 0}`);
 
-  // Game ends if 2 or more players are eliminated OR only 1 player remains
   if (eliminatedCount >= 2) {
-    console.log('🏁 2 or more players eliminated! Game ending...');
-
     if (remainingPlayers && remainingPlayers.length > 0) {
-      // Mark all remaining active players as winners
+      for (const winner of remainingPlayers) {
+        const { data: payouts, error: payoutError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('user_hash', winner.user_hash)
+          .eq('type', 'payout')
+          .like('description', `%game ${gameId}%`);
+
+        let totalWinnings = 0;
+        if (!payoutError && payouts) {
+          totalWinnings = payouts.reduce((sum, tx) => sum + (parseFloat(tx.amount.toString()) || 0), 0);
+        }
+
+        const refundResult = await deposit(winner.user_hash, stakeAmount);
+        if (refundResult.ok) {
+          await addTransaction({
+            type: 'payout',
+            amount: stakeAmount,
+            description: `Winner stake refund from game ${gameId}`,
+            userHash: winner.user_hash
+          });
+
+          const actualProfit = totalWinnings;
+
+          const { addProfit } = await import('@/lib/homepage_utils');
+          const { addActivityLog } = await import('@/lib/activity_log_utils');
+          if (actualProfit > 0) {
+            const platformFee = actualProfit * 0.10;
+            const userProfit = actualProfit * 0.90;
+
+            await addProfit(winner.user_hash, userProfit);
+
+            const totalWon = userProfit + stakeAmount;
+            await addActivityLog(
+              winner.user_hash,
+              winner.user_hash,
+              `won a game! Received $${totalWon.toFixed(2)} ($${userProfit.toFixed(2)} profit + $${stakeAmount.toFixed(2)} stake back)`,
+              'win'
+            );
+          } else {
+            await addActivityLog(
+              winner.user_hash,
+              winner.user_hash,
+              `won a game and got their $${stakeAmount.toFixed(2)} stake back!`,
+              'win'
+            );
+          }
+        } else {
+          console.error(`Failed to refund stake to winner ${winner.user_hash}:`, refundResult.error);
+        }
+      }
+
       await supabase
         .from('game_players')
         .update({ status: 'winner' })
         .eq('game_id', gameId)
         .eq('status', 'active');
 
-      // End game
       await supabase
         .from('games')
         .update({
@@ -841,28 +839,72 @@ export async function redistributeStake(
         })
         .eq('id', gameId);
 
-      // Add game end log
       await addGameLog(
         gameId,
         null,
         `🏁 Game ended! ${eliminatedCount} players eliminated. ${remainingPlayers.length} winners!`,
         'game_end'
       );
-
-      console.log(`Game ${gameId} completed. ${remainingPlayers.length} winners due to ${eliminatedCount} eliminations`);
     }
   } else if (remainingPlayers && remainingPlayers.length === 1) {
     const winner = remainingPlayers[0];
-    console.log(`Only one player remains! Winner: ${winner.user_hash}`);
 
-    // Mark winner
+    const { data: payouts, error: payoutError } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('user_hash', winner.user_hash)
+      .eq('type', 'payout')
+      .like('description', `%game ${gameId}%`);
+
+    let totalWinnings = 0;
+    if (!payoutError && payouts) {
+      totalWinnings = payouts.reduce((sum, tx) => sum + (parseFloat(tx.amount.toString()) || 0), 0);
+    }
+
+    const refundResult = await deposit(winner.user_hash, stakeAmount);
+    if (refundResult.ok) {
+      await addTransaction({
+        type: 'payout',
+        amount: stakeAmount,
+        description: `Winner stake refund from game ${gameId}`,
+        userHash: winner.user_hash
+      });
+
+      const actualProfit = totalWinnings;
+
+      const { addProfit } = await import('@/lib/homepage_utils');
+      const { addActivityLog } = await import('@/lib/activity_log_utils');
+      if (actualProfit > 0) {
+        const platformFee = actualProfit * 0.10;
+        const userProfit = actualProfit * 0.90;
+
+        await addProfit(winner.user_hash, userProfit);
+
+        const totalWon = userProfit + stakeAmount;
+        await addActivityLog(
+          winner.user_hash,
+          winner.user_hash,
+          `won a game! Received $${totalWon.toFixed(2)} ($${userProfit.toFixed(2)} profit + $${stakeAmount.toFixed(2)} stake back)`,
+          'win'
+        );
+      } else {
+        await addActivityLog(
+          winner.user_hash,
+          winner.user_hash,
+          `won a game and got their $${stakeAmount.toFixed(2)} stake back!`,
+          'win'
+        );
+      }
+    } else {
+      console.error(`Failed to refund stake to winner ${winner.user_hash}:`, refundResult.error);
+    }
+
     await supabase
       .from('game_players')
       .update({ status: 'winner' })
       .eq('game_id', gameId)
       .eq('user_hash', winner.user_hash);
 
-    // End game
     await supabase
       .from('games')
       .update({
@@ -871,52 +913,33 @@ export async function redistributeStake(
       })
       .eq('id', gameId);
 
-    // Add win log
     await addGameLog(
       gameId,
       winner.user_hash,
       `🏆 0x${winner.user_hash.substring(0, 8)} won the game!`,
       'win'
     );
-
-    console.log(`Game ${gameId} completed. Winner: ${winner.user_hash}`);
   } else if (remainingPlayers) {
-    console.log(`${remainingPlayers.length} players still remain in the game`);
   }
 
-  console.log('Stake redistribution complete');
   return { ok: true };
 }
 
-/**
- * Check for missed proofs and eliminate players
- * This should be called daily after the wake-up deadline
- */
 export async function checkAndProcessMissedProofs(): Promise<void> {
-  console.log('=== checkAndProcessMissedProofs ===');
-
-  // Get yesterday's date (the day we're checking for missed proofs)
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayDate = yesterday.toISOString().split('T')[0];
 
-  console.log('Checking for missed proofs on:', yesterdayDate);
-
-  // Get all active games
   const { data: activeGames } = await supabase
     .from('games')
     .select('id')
     .eq('status', 'active');
 
   if (!activeGames || activeGames.length === 0) {
-    console.log('No active games to check');
     return;
   }
 
-  console.log('Checking', activeGames.length, 'active games');
-
   for (const game of activeGames) {
-    // Get all active players in this game
     const { data: activePlayers } = await supabase
       .from('game_players')
       .select('user_hash, last_submission_date')
@@ -927,9 +950,7 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
       continue;
     }
 
-    // Check each player for missed submission
     for (const player of activePlayers) {
-      // Check if player submitted yesterday
       const { data: submission } = await supabase
         .from('game_submissions')
         .select('id')
@@ -938,11 +959,7 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
         .eq('submission_date', yesterdayDate)
         .maybeSingle();
 
-      // If no submission found, player missed their proof
       if (!submission) {
-        console.log(`Player ${player.user_hash} missed proof on ${yesterdayDate}`);
-
-        // Add missed workout log
         await addGameLog(
           game.id,
           player.user_hash,
@@ -950,18 +967,14 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
           'missed_workout'
         );
 
-        // Redistribute their stake to remaining players
         const result = await redistributeStake(game.id, player.user_hash);
 
-        if (result.ok) {
-          console.log(`Successfully redistributed stake for ${player.user_hash}`);
-        } else {
+        if (!result.ok) {
           console.error(`Failed to redistribute stake for ${player.user_hash}:`, result.error);
         }
       }
     }
 
-    // Check if only one player remains - declare winner
     const { data: remainingPlayers } = await supabase
       .from('game_players')
       .select('user_hash')
@@ -971,14 +984,12 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
     if (remainingPlayers && remainingPlayers.length === 1) {
       const winner = remainingPlayers[0];
 
-      // Mark winner
       await supabase
         .from('game_players')
         .update({ status: 'winner' })
         .eq('game_id', game.id)
         .eq('user_hash', winner.user_hash);
 
-      // End game
       await supabase
         .from('games')
         .update({
@@ -987,24 +998,17 @@ export async function checkAndProcessMissedProofs(): Promise<void> {
         })
         .eq('id', game.id);
 
-      // Add win log
       await addGameLog(
         game.id,
         winner.user_hash,
         `🏆 0x${winner.user_hash.substring(0, 8)} won the game!`,
         'win'
       );
-
-      console.log(`Game ${game.id} completed. Winner: ${winner.user_hash}`);
     }
   }
 
-  console.log('Missed proofs check complete');
 }
 
-/**
- * Get submissions for a specific game and date
- */
 export async function getGameSubmissions(
   gameId: string,
   date?: string

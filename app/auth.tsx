@@ -66,7 +66,7 @@ export default function AuthScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.formContainer}>
           <Text style={styles.title}>
-            {isLogin ? 'Welcome Back!' : 'Join Snooze'}
+            {isLogin ? 'Welcome Back!' : 'Join GymBet'}
           </Text>
           <Text style={styles.subtitle}>
             {isLogin 

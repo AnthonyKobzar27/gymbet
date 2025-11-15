@@ -21,7 +21,7 @@ import {
   Game,
   GameWithPlayers,
 } from '@/lib/game_utils';
-import { setupGameNotifications } from '@/lib/notification_utils';
+import { setupGameNotifications, clearGameNotifications } from '@/lib/notification_utils';
 import GuestView from '@/components/common/GuestView';
 
 type TabType = 'players' | 'log';
@@ -30,22 +30,12 @@ export default function BetsScreen() {
   const { user, getUserProfile } = useAuth();
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [userHash, setUserHash] = useState<string | null>(null);
-
-  // Game data
   const [activeGame, setActiveGame] = useState<GameWithPlayers | null>(null);
   const [joinableGames, setJoinableGames] = useState<Game[]>([]);
-
-  // Modals
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [proofModalVisible, setProofModalVisible] = useState(false);
-
-  // Tab selection for active game view
   const [selectedTab, setSelectedTab] = useState<TabType>('players');
-
-  // Track if user has submitted proof today
   const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
-
-  // Chat state
   const [chatMessage, setChatMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
 
@@ -59,7 +49,6 @@ export default function BetsScreen() {
     }
   }, [userHash]);
 
-  // Reload games whenever the screen comes into focus
   useFocusEffect(
     useCallback(() => {
       if (userHash) {
@@ -77,23 +66,18 @@ export default function BetsScreen() {
 
   const loadGames = async () => {
     if (!userHash) return;
-
-    // Check for active game first
     const activeGameData = await getUserActiveGame(userHash);
 
     if (activeGameData) {
-      // User has an active game - load full details
       const gameDetails = await getGameDetails(activeGameData.id);
       setActiveGame(gameDetails);
       setJoinableGames([]);
 
-      // Check if user has submitted today
       const today = new Date().toISOString().split('T')[0];
       const submissions = await getGameSubmissions(activeGameData.id, today);
       const userSubmission = submissions.find(s => s.user_hash === userHash);
       setHasSubmittedToday(!!userSubmission);
     } else {
-      // No active game - load joinable games
       const joinable = await getJoinableGames();
       setJoinableGames(joinable);
       setActiveGame(null);
@@ -106,7 +90,6 @@ export default function BetsScreen() {
       return;
     }
 
-    // Get game details to get split type
     const gameDetails = await getGameDetails(gameId);
     if (!gameDetails) {
       Alert.alert('Error', 'Could not load game details');
@@ -116,12 +99,11 @@ export default function BetsScreen() {
     const result = await joinGame(gameId, userHash);
 
     if (result.ok) {
-      // Set up notifications for this game
-      await setupGameNotifications(gameDetails.split_type);
+      await setupGameNotifications();
 
       Alert.alert(
         'Success!',
-        'Successfully joined the game! Your stake has been deducted.\n\n📱 Notifications enabled:\n• Daily workout reminder'
+        'Successfully joined the game!'
       );
       loadGames();
     } else {
@@ -144,6 +126,7 @@ export default function BetsScreen() {
             const result = await leaveGame(activeGame.id, userHash);
 
             if (result.ok) {
+              await clearGameNotifications();
               Alert.alert('Success', `You left the game and received a $${result.refunded} refund!`);
               loadGames();
             } else {
@@ -171,7 +154,7 @@ export default function BetsScreen() {
         'Success!',
         result.isOnTime
           ? 'Your workout proof was submitted on time!'
-          : 'Your workout proof was submitted, but it was late.'
+          : 'Proof submitted LATE!'
       );
       loadGames();
     } else {

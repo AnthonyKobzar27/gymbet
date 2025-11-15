@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "GymBet",
-    "slug": "gymbet",
+    "slug": "snoozeapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -86,6 +86,7 @@
     },
     "updates": {
       "url": "https://u.expo.dev/f620eba5-77af-410e-856f-3d34eb8c3ff8"
-    }
+    },
+    "owner": "anthonykobzar"
   }
 }

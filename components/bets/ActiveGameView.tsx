@@ -32,13 +32,11 @@ export default function ActiveGameView({
 }: ActiveGameViewProps) {
   return (
     <>
-      {/* Game Header */}
       <View style={styles.arcadeCard}>
         <View style={styles.cardInner}>
           <Text style={styles.cardTitle}>MY CURRENT GAME</Text>
           <View style={styles.spacer} />
 
-          {/* Weekly Schedule */}
           {activeGame.weekly_schedule && (
             <>
               <View style={styles.scheduleGrid}>
@@ -101,7 +99,6 @@ export default function ActiveGameView({
         </View>
       </View>
 
-      {/* Tab Selector */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tab, selectedTab === 'players' && styles.tabActive]}
@@ -121,7 +118,6 @@ export default function ActiveGameView({
         </TouchableOpacity>
       </View>
 
-      {/* Tab Content */}
       <View style={styles.arcadeCard}>
         <View style={styles.cardInner}>
           {selectedTab === 'players' && (
@@ -172,7 +168,6 @@ export default function ActiveGameView({
                 </ScrollView>
               )}
 
-              {/* Chat Input */}
               <View style={styles.chatInputContainer}>
                 <TextInput
                   style={styles.chatInput}

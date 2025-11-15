@@ -17,7 +17,6 @@ import LoginModal from '@/components/modals/LoginModal';
 import HomeFeed from '@/components/comps/homescreen';
 
 
-// Activity Feed Item Component
 const ActivityItem = ({ activity }: { activity: any }) => (
   <View style={styles.activityItem}>
     <View style={styles.activityHeader}>
@@ -35,7 +34,6 @@ const ActivityItem = ({ activity }: { activity: any }) => (
   </View>
 );
 
-// Game Card Component
 const GameCard = ({ game, onJoin }: { game: any; onJoin: (gameId: string) => void }) => (
   <View style={styles.gameCard}>
     <View style={styles.gameHeader}>
@@ -62,7 +60,6 @@ const GameCard = ({ game, onJoin }: { game: any; onJoin: (gameId: string) => voi
   </View>
 );
 
-// Current Game Component
 const CurrentGameCard = ({ game }: { game: any }) => (
   <View style={styles.currentGameCard}>
     <Text style={styles.currentGameTitle}>🎯 ACTIVE CHALLENGE</Text>
@@ -172,7 +169,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingTop: 50, // Account for header
+    paddingTop: 50,
   },
   loadingContainer: {
     flex: 1,
@@ -187,7 +184,6 @@ const styles = StyleSheet.create({
     color: '#000',
   },
   
-  // Guest Welcome
   guestWelcome: {
     margin: 16,
     marginTop: 120,
@@ -237,7 +233,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Welcome Section
   welcomeSection: {
     marginBottom: 24,
   },
@@ -253,7 +248,6 @@ const styles = StyleSheet.create({
     color: '#666666',
   },
 
-  // Create Game Button
   createGameButton: {
     backgroundColor: '#000000',
     borderWidth: 4,
@@ -274,7 +268,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Current Game Card
   currentGameCard: {
     backgroundColor: '#E8F5E8',
     borderWidth: 4,
@@ -330,7 +323,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Sections
   section: {
     marginBottom: 24,
   },
@@ -348,7 +340,6 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 
-  // Game Cards
   gameCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 3,
@@ -414,7 +405,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Activity Items
   activityItem: {
     backgroundColor: '#FFFFFF',
     borderWidth: 2,

@@ -11,85 +11,23 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { UserAvatar } from '@/components/Avatar';
 
-const MiniLineChart = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
-  const width = 180;
-  const padding = 4;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-
-  const points = data.map((value, index) => {
-    const x = data.length === 1 ? width / 2 : padding + (index / (data.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <Svg width={width} height={height}>
-      {/* Grid lines */}
-      <Line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#E0E0E0" strokeWidth="1" />
-      {/* Line */}
-      <Path d={`M ${points}`} fill="none" stroke={color} strokeWidth="3" />
-      {/* Points */}
-      {data.map((value, index) => {
-        const x = data.length === 1 ? width / 2 : padding + (index / (data.length - 1)) * (width - 2 * padding);
-        const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-        return <Circle key={index} cx={x} cy={y} r="3" fill={color} />;
-      })}
-    </Svg>
-  );
-};
-
-const MiniLineChart2 = ({ data, color = '#000', height = 60 }: { data: number[], color?: string, height?: number }) => {
-  const width = 180;
-  const padding = 4;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  
-  const points = data.map((value, index) => {
-    const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-    const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <Svg width={width} height={height}>
-      {/* Grid lines */}
-      <Line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="#E0E0E0" strokeWidth="1" />
-      {/* Line */}
-      <Path d={`M ${points}`} fill="none" stroke={color} strokeWidth="3" />
-      {/* Points */}
-      {data.map((value, index) => {
-        const x = padding + (index / (data.length - 1)) * (width - 2 * padding);
-        const y = height - padding - ((value - min) / range) * (height - 2 * padding);
-        return <Circle key={index} cx={x} cy={y} r="3" fill={color} />;
-      })}
-    </Svg>
-  );
-};
-
-
-
 interface FeedItem {
   id: string;
   userHash: string;
   action: string;
   timestamp: string;
-  type: 'workout' | 'comment' | 'bet' | 'win';
+  type: 'workout' | 'proof' | 'comment' | 'bet' | 'win' | 'loss' | 'leave';
   image?: string | null;
   approvals?: number;
   rejections?: number;
   userVote?: 'approve' | 'reject' | null;
 }
 
-// Purely presentational home screen – no navigation/auth logic, just UI
 export default function HomeScreen() {
   const { getUserProfile } = useAuth();
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [profitMade, setProfitMade] = useState(0);
   const [workoutData, setWorkoutData] = useState([0]);
-  const [profitData, setProfitData] = useState([0]);
   const [userHash, setUserHash] = useState<string | null>(null);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [hasActiveGame, setHasActiveGame] = useState(false);
@@ -103,30 +41,31 @@ export default function HomeScreen() {
     loadUserData();
     loadFeed();
 
-    // Subscribe to real-time updates
     const unsubscribe = subscribeToActivityFeed((newLog) => {
       const newItem: FeedItem = {
         id: newLog.id.toString(),
         userHash: newLog.user_hash,
         action: newLog.message,
         timestamp: formatTimestamp(newLog.timestep),
-        type: newLog.typeofmessage as 'workout' | 'comment' | 'bet' | 'win',
+        type: newLog.typeofmessage as 'workout' | 'proof' | 'comment' | 'bet' | 'win' | 'loss' | 'leave',
         image: newLog.image,
       };
       setFeedItems((prev) => [newItem, ...prev]);
     });
 
-    // Cleanup on unmount
     return () => {
       unsubscribe();
     };
   }, []);
 
-  // Check for active game every time the screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      loadUserData();
       checkActiveGame();
-    }, [])
+      if (userHash) {
+        loadFeed();
+      }
+    }, [userHash])
   );
 
   const loadUserData = async () => {
@@ -134,13 +73,11 @@ export default function HomeScreen() {
     if (profile?.hash) {
       setUserHash(profile.hash);
       const stats = await getStats(profile.hash);
-      setTotalWorkouts(stats.workoutLogged); // Show total workouts instead of average
+      setTotalWorkouts(stats.workoutLogged);
       setProfitMade(stats.profitMade);
       setWorkoutData(stats.workoutHistory.length > 0 ? stats.workoutHistory : [0]);
-      setProfitData(stats.profitHistory.length > 0 ? stats.profitHistory : [0]);
       setCurrentSplitDay(stats.currentSplitDay || 'No split set');
 
-      // Check if user can log workout today
       const canLog = await checkCanLogWorkout(profile.hash);
       setCanLogWorkoutToday(canLog);
     }
@@ -149,17 +86,13 @@ export default function HomeScreen() {
   const checkActiveGame = async () => {
     const profile = await getUserProfile();
     if (profile?.hash) {
-      console.log('=== Checking for active game ===');
       const game = await getUserActiveGame(profile.hash);
-      console.log('Active game:', game ? game.id : 'none');
 
       if (game) {
-        // Load full game details with weekly schedule
         const gameDetails = await getGameDetails(game.id);
         setHasActiveGame(true);
         setActiveGame(gameDetails);
 
-        // Update current split day based on the game schedule
         if (gameDetails?.weekly_schedule) {
           const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
           const today = days[new Date().getDay()];
@@ -177,44 +110,46 @@ export default function HomeScreen() {
 
   const loadFeed = async () => {
     if (!userHash) {
-      console.log('No user hash, skipping feed load');
       return;
     }
 
-    console.log('=== Loading feed for validator ===');
-    console.log('User hash:', userHash);
+    const { getActivityFeed } = await import('@/lib/activity_log_utils');
+    const allActivityLogs = await getActivityFeed();
 
-    // Get proofs assigned to this user for validation (PBFT system)
-    const logs = await getProofsForValidator(userHash);
-    console.log('Proofs assigned for validation:', logs.length);
+    const assignedProofs = await getProofsForValidator(userHash);
+    const assignedProofIds = new Set(assignedProofs.map(p => p.id));
 
-    // Get activity IDs for fetching votes
-    const activityIds = logs.map(log => log.id);
+    const allProofIds = allActivityLogs
+      .filter(log => log.typeofmessage === 'workout' || log.typeofmessage === 'proof')
+      .map(log => log.id);
 
-    // Load vote counts and user votes in parallel
     const [voteCounts, userVotesMap] = await Promise.all([
-      getVoteCounts(activityIds),
-      getUserVotes(activityIds, userHash),
+      getVoteCounts(allProofIds),
+      getUserVotes(allProofIds, userHash),
     ]);
 
-    const items: FeedItem[] = logs.map(log => {
+    const sortedLogs = allActivityLogs
+      .sort((a, b) => new Date(b.timestep).getTime() - new Date(a.timestep).getTime())
+      .slice(0, 50);
+
+    const items: FeedItem[] = sortedLogs.map(log => {
       const counts = voteCounts.get(log.id) || { approvals: 0, rejections: 0 };
       const userVote = userVotesMap.get(log.id) || null;
+      const isAssignedForValidation = assignedProofIds.has(log.id);
 
       return {
         id: log.id.toString(),
         userHash: log.user_hash,
         action: log.message,
         timestamp: formatTimestamp(log.timestep),
-        type: log.typeofmessage as 'workout' | 'comment' | 'bet' | 'win',
+        type: log.typeofmessage as 'workout' | 'proof' | 'comment' | 'bet' | 'win' | 'loss' | 'leave',
         image: log.image,
         approvals: counts.approvals,
         rejections: counts.rejections,
-        userVote: userVote,
+        userVote: isAssignedForValidation ? (userVote ?? null) : undefined,
       };
     });
 
-    console.log('Feed items loaded:', items.length);
     setFeedItems(items);
   };
 
@@ -250,13 +185,12 @@ export default function HomeScreen() {
     const result = await addWorkout(userHash, splitInput.trim());
     if (result.ok) {
       Alert.alert('Success', `Logged ${splitInput} workout!`);
-      setCanLogWorkoutToday(false); // Disable workout logging immediately
+      setCanLogWorkoutToday(false);
       loadUserData();
     } else {
       console.error('Failed to add workout:', result.error);
       const errorMessage = result.error?.message || 'Unknown error';
 
-      // Show special message if already logged today
       if (errorMessage.includes('already logged workout today')) {
         Alert.alert('Already Logged', 'You have already logged your workout for today. Come back tomorrow!');
       } else {
@@ -275,7 +209,6 @@ export default function HomeScreen() {
     const currentItem = feedItems.find((item) => item.id === activityId);
     const isTogglingSameVote = currentItem?.userVote === voteType;
 
-    // Update the feed item locally for immediate feedback
     setFeedItems((prev) =>
       prev.map((item) => {
         if (item.id === activityId) {
@@ -287,13 +220,10 @@ export default function HomeScreen() {
           let newApprovals = item.approvals || 0;
           let newRejections = item.rejections || 0;
 
-          // Remove previous vote if exists
           if (wasApproved) newApprovals--;
           if (wasRejected) newRejections--;
 
-          // Add new vote if different from previous
           if (item.userVote === voteType) {
-            // Toggling off the same vote
             return {
               ...item,
               userVote: null,
@@ -301,7 +231,6 @@ export default function HomeScreen() {
               rejections: newRejections,
             };
           } else {
-            // Switching to new vote
             if (isApproving) newApprovals++;
             if (isRejecting) newRejections++;
 
@@ -317,26 +246,20 @@ export default function HomeScreen() {
       })
     );
 
-    // Persist vote to database
     try {
       if (isTogglingSameVote) {
-        // Remove the vote
         const result = await removeVote(activityIdNum, userHash);
         if (!result.ok) {
           throw new Error('Failed to remove vote');
         }
       } else {
-        // Add or update the vote
         const result = await voteOnProof(activityIdNum, userHash, voteType);
         if (!result.ok) {
           throw new Error('Failed to submit vote');
         }
       }
 
-      // Check PBFT validation status after vote
-      console.log('Checking PBFT validation status...');
       const validation = await checkPBFTValidation(activityIdNum);
-      console.log('PBFT Status:', validation.status, 'Approvals:', validation.approvals, '/', validation.required);
 
       if (validation.status === 'approved') {
         Alert.alert('Proof Approved!', 'This proof has been validated by 2/3 majority (PBFT consensus)');
@@ -345,7 +268,6 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error('Error voting:', error);
-      // Revert the optimistic update on error
       loadFeed();
     }
   };
@@ -356,32 +278,21 @@ export default function HomeScreen() {
       return;
     }
 
-    console.log('=== Joining Random Game ===');
-
-    // Get all joinable games
     const games = await getJoinableGames();
-    console.log('Found joinable games:', games.length);
 
     if (games.length === 0) {
       Alert.alert('No Games Available', 'There are no games to join right now. Create a new game instead!');
       return;
     }
 
-    // Pick the first game (or randomize if you want)
     const randomGame = games[0];
-    console.log('Joining game:', randomGame.id);
-
-    // Join the game
     const result = await joinGame(randomGame.id, userHash);
 
     if (result.ok) {
-      console.log('✅ Successfully joined game!');
       Alert.alert('Success!', `Joined game with $${randomGame.stake} stake!`);
 
-      // Refresh active game status
       await checkActiveGame();
 
-      // Navigate to bets screen
       router.push('/bets');
     } else {
       console.error('Failed to join game:', result.error);
@@ -453,18 +364,11 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Profit with Chart */}
+          {/* Total Profit */}
           <View style={styles.arcadeCard}>
             <View style={styles.cardInner}>
-              <View style={styles.metricRow}>
-                <View style={styles.metricLeft}>
-                  <Text style={styles.statLabel}>TOTAL PROFIT</Text>
-                  <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>${profitMade}</Text>
-                </View>
-                <View style={styles.chartContainer}>
-                <MiniLineChart2 data={profitData} color="#000" height={60} />
-                </View>
-              </View>
+              <Text style={styles.statLabel}>TOTAL PROFIT</Text>
+              <Text style={styles.statValue}>${profitMade.toFixed(2)}</Text>
             </View>
           </View>
 
@@ -495,7 +399,11 @@ export default function HomeScreen() {
                           </View>
                         </View>
                       </View>
-                      <Text style={styles.feedAction}>{item.action}</Text>
+                      <Text style={[
+                        styles.feedAction,
+                        item.type === 'win' && styles.feedActionWin,
+                        item.type === 'loss' && styles.feedActionLoss
+                      ]}>{item.action}</Text>
                       {item.image && (
                         <Image
                           source={{ uri: item.image }}
@@ -503,7 +411,7 @@ export default function HomeScreen() {
                           resizeMode="cover"
                         />
                       )}
-                      {item.type === 'workout' && (
+                      {(item.type === 'workout' || item.type === 'proof') && item.userVote !== undefined && (
                         <View style={styles.voteContainer}>
                           <TouchableOpacity
                             style={[
@@ -767,6 +675,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
     lineHeight: 18,
+  },
+  feedActionWin: {
+    color: '#00AA00', // Green for wins
+  },
+  feedActionLoss: {
+    color: '#FF0000', // Red for losses
   },
   feedImage: {
     width: '100%',

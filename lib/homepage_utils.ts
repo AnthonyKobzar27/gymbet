@@ -28,7 +28,7 @@ export async function getStats(userHash: string): Promise<UserStats> {
 
   return {
     workoutLogged: data?.workout_logged ?? 0,
-    workoutAverage: Math.round(workoutAverage * 10) / 10, // Round to 1 decimal place
+    workoutAverage: Math.round(workoutAverage * 10) / 10,
     profitMade: data?.profit_made ?? 0,
     workoutHistory: workoutHistory,
     profitHistory: data?.profit_history ?? [0],
@@ -37,23 +37,14 @@ export async function getStats(userHash: string): Promise<UserStats> {
 }
 
 export async function initStats(userHash: string): Promise<boolean> {
-  console.log('=== initStats called ===');
-  console.log('userHash:', userHash);
-
-  // First check if the user already has stats
   const { data: existing, error: checkError } = await supabase
     .from('home_page_top')
     .select('user_hash')
     .eq('user_hash', userHash)
     .maybeSingle();
 
-  console.log('Existing stats check - data:', existing);
-  console.log('Existing stats check - error:', checkError);
-
-  // Only create if user doesn't exist
   if (!existing) {
-    console.log('No existing stats found, creating new entry...');
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('home_page_top')
       .insert({
         user_hash: userHash,
@@ -65,29 +56,16 @@ export async function initStats(userHash: string): Promise<boolean> {
       })
       .select();
 
-    console.log('Insert result - data:', data);
-    console.log('Insert result - error:', error);
 
     if (error) {
-      console.error('❌ FAILED to init user stats', error);
       return false;
     }
-
-    console.log('✅ Stats initialized successfully!');
-  } else {
-    console.log('User already has stats entry');
   }
   return true;
 }
 
 export async function addWorkout(userHash: string, splitDay: string): Promise<{ ok: boolean; error?: any }> {
-  console.log('=== addWorkout called ===');
-  console.log('userHash:', userHash);
-  console.log('split day:', splitDay);
-
-  // Check if user has already logged workout today
-  const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
-  console.log('Today:', today);
+  const today = new Date().toISOString().split('T')[0];
 
   const { data: existingLog, error: checkError } = await supabase
     .from('home_page_top')
@@ -101,10 +79,8 @@ export async function addWorkout(userHash: string, splitDay: string): Promise<{ 
   }
 
   const lastLogDate = existingLog?.last_workout_log_date;
-  console.log('Last workout log date:', lastLogDate);
 
   if (lastLogDate === today) {
-    console.log('User already logged workout today!');
     return {
       ok: false,
       error: { message: 'You have already logged workout today. Come back tomorrow!' }
@@ -112,14 +88,8 @@ export async function addWorkout(userHash: string, splitDay: string): Promise<{ 
   }
 
   const current = await getStats(userHash);
-  console.log('Current stats:', current);
-
   const newWorkout = current.workoutLogged + 1;
-  console.log('New workout count:', newWorkout);
-
-  // Update history - keep last 7 entries (1 for completed, 0 for skipped)
   const newHistory = [...current.workoutHistory, 1].slice(-7);
-  console.log('New workout history:', newHistory);
 
   const { data, error } = await supabase
     .from('home_page_top')
@@ -132,9 +102,6 @@ export async function addWorkout(userHash: string, splitDay: string): Promise<{ 
     .eq('user_hash', userHash)
     .select();
 
-  console.log('Update result - data:', data);
-  console.log('Update result - error:', error);
-
   if (error) {
     console.error('Failed to add workout:', error);
     return { ok: false, error };
@@ -145,11 +112,9 @@ export async function addWorkout(userHash: string, splitDay: string): Promise<{ 
     return { ok: false, error: { message: 'No rows updated. Check user_hash match.' } };
   }
 
-  console.log('Workout added successfully!');
   return { ok: true };
 }
 
-// Check if user can log workout today (returns true if they haven't logged yet today)
 export async function canLogWorkoutToday(userHash: string): Promise<boolean> {
   const today = new Date().toISOString().split('T')[0];
 
@@ -160,8 +125,7 @@ export async function canLogWorkoutToday(userHash: string): Promise<boolean> {
     .maybeSingle();
 
   if (error) {
-    console.error('Failed to check workout log status:', error);
-    return true; // Default to allowing if error
+    return true;
   }
 
   const lastLogDate = data?.last_workout_log_date;
@@ -169,19 +133,9 @@ export async function canLogWorkoutToday(userHash: string): Promise<boolean> {
 }
 
 export async function addProfit(userHash: string, profit: number): Promise<{ ok: boolean; error?: any }> {
-  console.log('=== addProfit called ===');
-  console.log('userHash:', userHash);
-  console.log('profit to add:', profit);
-
   const current = await getStats(userHash);
-  console.log('Current stats:', current);
-
   const newProfit = current.profitMade + Math.abs(profit);
-  console.log('New profit value:', newProfit);
-
-  // Update history - keep last 7 entries
   const newHistory = [...current.profitHistory, Math.abs(profit)].slice(-7);
-  console.log('New profit history:', newHistory);
 
   const { data, error } = await supabase
     .from('home_page_top')
@@ -191,9 +145,6 @@ export async function addProfit(userHash: string, profit: number): Promise<{ ok:
     })
     .eq('user_hash', userHash)
     .select();
-
-  console.log('Update result - data:', data);
-  console.log('Update result - error:', error);
 
   if (error) {
     console.error('Failed to add profit:', error);
@@ -205,6 +156,5 @@ export async function addProfit(userHash: string, profit: number): Promise<{ ok:
     return { ok: false, error: { message: 'No rows updated. Check user_hash match.' } };
   }
 
-  console.log('Profit added successfully!');
   return { ok: true };
 }

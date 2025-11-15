@@ -47,12 +47,10 @@ export default function ProofSubmissionModal({
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      console.log('=== Taking picture ===');
       try {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.7,
         });
-        console.log('Photo taken:', photo?.uri);
         setPhotoUri(photo?.uri || null);
       } catch (error) {
         console.error('Error taking picture:', error);

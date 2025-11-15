@@ -6,9 +6,6 @@ import { supabase } from './supabase';
  * Amount should be in dollars (e.g., 10 for $10)
  */
 export async function createCheckoutSession(amount: number, userHash: string): Promise<string> {
-  console.log('=== createCheckoutSession ===');
-  console.log('Amount:', amount);
-  console.log('User hash:', userHash);
 
   try {
     // Call Supabase Edge Function to create checkout session

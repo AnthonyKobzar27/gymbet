@@ -51,8 +51,7 @@ export async function initBalance(userHash: string): Promise<boolean> {
  * This function has race conditions. Safe for game stakes/payouts only.
  */
 export async function changeBalance(userHash: string, delta: number): Promise<{ ok: boolean; newBalance?: number; error?: any }> {
-  // ⚠️ WARNING: This has race conditions!
-  // For deposits/withdrawals, use Edge Functions with update_balance_atomic()
+
 
   const current = await getBalance(userHash);
   const next = current + delta;

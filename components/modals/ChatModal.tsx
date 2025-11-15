@@ -34,12 +34,10 @@ export default function ChatModal({
   const [sending, setSending] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Filter logs to only show chat messages
   const chatMessages = logs.filter(log => log.event_type === 'chat');
 
   useEffect(() => {
     if (visible && scrollViewRef.current) {
-      // Scroll to bottom when modal opens or new messages arrive
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
@@ -49,14 +47,10 @@ export default function ChatModal({
   const handleSend = async () => {
     if (!message.trim()) return;
 
-    console.log('=== Sending chat message ===');
-    console.log('Message:', message);
-
     setSending(true);
     try {
       await onSendMessage(message);
       setMessage('');
-      // Scroll to bottom after sending
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);

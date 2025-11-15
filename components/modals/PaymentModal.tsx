@@ -30,7 +30,6 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
   const { getUserProfile } = useAuth();
   const [userHash, setUserHash] = useState<string | null>(null);
 
-  // Calculate fees
   const calculateFees = (depositAmount: number) => {
     const stripeFee = (depositAmount * 0.029) + 0.30;
     const platformFee = 0.10;
@@ -78,7 +77,6 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
       return;
     }
 
-    // For deposits, check if total charge (including fees) meets Stripe minimum
     if (type === 'deposit' && fees) {
       if (fees.total < 0.50) {
         Alert.alert('Error', `Total charge must be at least $0.50 (Stripe requirement)\n\nYour total: $${fees.total.toFixed(2)}`);
@@ -90,14 +88,8 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
 
     try {
       if (type === 'deposit') {
-        // Create Stripe Checkout Session
         const sessionUrl = await createCheckoutSession(paymentAmount, userHash);
-
-        // Open Stripe Checkout in browser
         const result = await WebBrowser.openBrowserAsync(sessionUrl);
-
-        // Note: The actual payment confirmation will happen via webhook
-        // For now, we'll just close the modal and let the user know
         if (result.type === 'cancel' || result.type === 'dismiss') {
           Alert.alert('Cancelled', 'Payment was cancelled');
         } else {
@@ -107,13 +99,11 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
           );
           setAmount('');
           onClose();
-          // Reload balance after a short delay
           setTimeout(() => {
             if (userHash) loadBalance(userHash);
           }, 2000);
         }
       } else {
-        // Handle withdrawal using secure Edge Function
         const result = await requestWithdrawal(paymentAmount, userHash);
 
         if (!result.ok) {

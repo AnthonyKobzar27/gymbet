@@ -61,9 +61,7 @@ export function HeaderRight() {
 
   const loadBalance = async () => {
     if (userProfile?.hash) {
-      console.log('=== Loading balance for user:', userProfile.hash);
       const newBalance = await getBalance(userProfile.hash);
-      console.log('=== Balance loaded:', newBalance);
       setBalance(newBalance);
     }
   };
@@ -77,8 +75,6 @@ export function HeaderRight() {
       setLoginModalVisible(true);
       return;
     }
-
-    // Show deposit amount selection modal
     setDepositModalVisible(true);
   };
 
@@ -88,14 +84,8 @@ export function HeaderRight() {
     try {
       const { createCheckoutSession } = await import('@/lib/stripe_utils');
       const WebBrowser = await import('expo-web-browser');
-
-      // Create checkout session with selected amount
       const sessionUrl = await createCheckoutSession(amount, userProfile.hash);
-
-      // Open Stripe Checkout
       await WebBrowser.openBrowserAsync(sessionUrl);
-
-      // Reload balance after user returns
       setTimeout(() => {
         loadBalance();
       }, 2000);
@@ -106,7 +96,6 @@ export function HeaderRight() {
 
   return (
     <View style={styles.headerRightContainer}>
-      {/* Balance Display - Only show if logged in */}
       {user && (
         <View style={styles.balanceContainer}>
           <Text style={styles.balanceText}>${balance.toFixed(2)}</Text>
