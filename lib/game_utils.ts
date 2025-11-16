@@ -753,7 +753,7 @@ export async function redistributeStake(
   await addActivityLog(
     eliminatedUserHash,
     eliminatedUserHash,
-    `lost a game and was eliminated! Lost $${stakeAmount.toFixed(2)} stake`,
+    `Lost $${stakeAmount.toFixed(2)} stake`,
     'loss'
   );
 
@@ -809,14 +809,14 @@ export async function redistributeStake(
             await addActivityLog(
               winner.user_hash,
               winner.user_hash,
-              `won a game! Received $${totalWon.toFixed(2)} ($${userProfit.toFixed(2)} profit + $${stakeAmount.toFixed(2)} stake back)`,
+              `Won $${totalWon.toFixed(2)}`,
               'win'
             );
           } else {
             await addActivityLog(
               winner.user_hash,
               winner.user_hash,
-              `won a game and got their $${stakeAmount.toFixed(2)} stake back!`,
+              `Won a game!`,
               'win'
             );
           }
@@ -842,7 +842,7 @@ export async function redistributeStake(
       await addGameLog(
         gameId,
         null,
-        `🏁 Game ended! ${eliminatedCount} players eliminated. ${remainingPlayers.length} winners!`,
+        `Game ended! ${eliminatedCount} players eliminated. ${remainingPlayers.length} winners!`,
         'game_end'
       );
     }
