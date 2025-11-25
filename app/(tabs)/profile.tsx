@@ -18,6 +18,8 @@ import { UserAvatar } from '@/components/Avatar';
 import LoginModal from '@/components/modals/LoginModal';
 import PaymentModal from '@/components/modals/PaymentModal';
 import BlockedUsersModal from '@/components/modals/BlockedUsersModal';
+import SettingsModal from '@/components/modals/SettingsModal';
+import TermsModal from '@/components/modals/TermsModal';
 import { getStats } from '@/lib/homepage_utils';
 import { getBalance } from '@/lib/transaction_utils';
 import { getUserGames, getUserActiveGame, getGameDetails, GameWithPlayers } from '@/lib/game_utils';
@@ -30,7 +32,9 @@ export default function ProfileScreen() {
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [blockedUsersModalVisible, setBlockedUsersModalVisible] = useState(false);
+  const [termsModalVisible, setTermsModalVisible] = useState(false);
 
   const [balance, setBalance] = useState(0);
   const [totalProfit, setTotalProfit] = useState(0);
@@ -244,7 +248,7 @@ export default function ProfileScreen() {
                       style={styles.settingsButton}
                       onPress={() => {
                         triggerHaptic('light');
-                        setBlockedUsersModalVisible(true);
+                        setSettingsModalVisible(true);
                       }}
                     >
                       <FontAwesome name="cog" size={20} color="#000" />
@@ -325,11 +329,23 @@ export default function ProfileScreen() {
       />
 
       {userProfile?.hash && (
-        <BlockedUsersModal
-          visible={blockedUsersModalVisible}
-          onClose={() => setBlockedUsersModalVisible(false)}
-          userHash={userProfile.hash}
-        />
+        <>
+          <SettingsModal
+            visible={settingsModalVisible}
+            onClose={() => setSettingsModalVisible(false)}
+            onUnblockUsers={() => setBlockedUsersModalVisible(true)}
+            onTermsOfService={() => setTermsModalVisible(true)}
+          />
+          <BlockedUsersModal
+            visible={blockedUsersModalVisible}
+            onClose={() => setBlockedUsersModalVisible(false)}
+            userHash={userProfile.hash}
+          />
+          <TermsModal
+            visible={termsModalVisible}
+            onClose={() => setTermsModalVisible(false)}
+          />
+        </>
       )}
     </>
   );
