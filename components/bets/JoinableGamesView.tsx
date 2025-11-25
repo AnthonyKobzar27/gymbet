@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Game } from '@/lib/game_utils';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface JoinableGamesViewProps {
   joinableGames: Game[];
@@ -30,7 +31,9 @@ export default function JoinableGamesView({
               <View key={game.id} style={styles.gameItem}>
                 <View style={styles.gameHeader}>
                   <Text style={styles.gameTitle}>Weekly Split</Text>
-                  <Text style={styles.gameStake}>${game.stake}</Text>
+                  <Text style={styles.gameStake}>
+                    {game.stake === 0 ? 'FREE / TEST' : `$${game.stake}`}
+                  </Text>
                 </View>
 
                 {game.weekly_schedule && (
@@ -76,7 +79,10 @@ export default function JoinableGamesView({
                 </View>
                 <TouchableOpacity
                   style={styles.joinButton}
-                  onPress={() => onJoinGame(game.id)}
+                  onPress={() => {
+                    triggerHaptic('medium');
+                    onJoinGame(game.id);
+                  }}
                 >
                   <Text style={styles.joinButtonText}>JOIN GAME →</Text>
                 </TouchableOpacity>
@@ -85,14 +91,6 @@ export default function JoinableGamesView({
           )}
         </View>
       </View>
-
-      {/* Create Game Button */}
-      <TouchableOpacity
-        style={styles.createButton}
-        onPress={onCreateGame}
-      >
-        <Text style={styles.createButtonText}>+ CREATE NEW GAME</Text>
-      </TouchableOpacity>
     </>
   );
 }

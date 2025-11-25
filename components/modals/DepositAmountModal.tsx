@@ -10,6 +10,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface DepositAmountModalProps {
   visible: boolean;
@@ -25,20 +26,24 @@ export default function DepositAmountModal({ visible, onClose, onSelectAmount }:
     const amount = parseFloat(customAmount);
 
     if (!amount || isNaN(amount)) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (amount < 0.5) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Minimum deposit is $0.5');
       return;
     }
 
     if (amount > 100) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Maximum deposit is $100');
       return;
     }
 
+    triggerHaptic('medium');
     onSelectAmount(amount);
     setCustomAmount('');
     onClose();
@@ -56,7 +61,10 @@ export default function DepositAmountModal({ visible, onClose, onSelectAmount }:
           <View style={styles.modalContent}>
           <View style={styles.modalHeaderRow}>
             <Text style={styles.modalTitle}>SELECT DEPOSIT AMOUNT</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={() => {
+              triggerHaptic('light');
+              onClose();
+            }}>
               <Text style={styles.closeButton}>X</Text>
             </TouchableOpacity>
           </View>
@@ -69,6 +77,7 @@ export default function DepositAmountModal({ visible, onClose, onSelectAmount }:
                 key={amount}
                 style={styles.amountButton}
                 onPress={() => {
+                  triggerHaptic('medium');
                   onSelectAmount(amount);
                   onClose();
                 }}

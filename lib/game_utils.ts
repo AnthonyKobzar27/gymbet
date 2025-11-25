@@ -118,13 +118,19 @@ export async function createGame(
 }
 
 
-export async function getJoinableGames(): Promise<Game[]> {
-  const { data, error } = await supabase
+export async function getJoinableGames(onlyFreeGames: boolean = false): Promise<Game[]> {
+  let query = supabase
     .from('games')
     .select('*')
     .eq('status', 'joinable')
-    .lt('player_count', 8)
-    .order('created_at', { ascending: false });
+    .lt('player_count', 8);
+
+  // If onlyFreeGames is true, only show games with stake = 0
+  if (onlyFreeGames) {
+    query = query.eq('stake', 0);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     console.error('Failed to get joinable games:', error);
@@ -183,6 +189,14 @@ export async function joinGame(
 
   if (game.player_count >= 8) {
     return { ok: false, error: { message: 'Game is full' } };
+  }
+
+  // Check if user is in an active game
+  const activeGame = await getUserActiveGame(userHash);
+  
+  // If user is not in a game and trying to join a paid game (stake > 0), reject
+  if (!activeGame && game.stake > 0) {
+    return { ok: false, error: { message: 'Paid games can only be joined on the web. Please join a free game (stake $0) from the app.' } };
   }
 
   const userBalance = await getBalance(userHash);

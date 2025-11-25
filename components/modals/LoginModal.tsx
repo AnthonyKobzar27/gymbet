@@ -13,6 +13,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { triggerHaptic } from '@/lib/haptics';
+import TermsModal from './TermsModal';
+import CommunityGuidelinesModal from './CommunityGuidelinesModal';
 
 interface LoginModalProps {
   visible: boolean;
@@ -25,45 +28,63 @@ export default function LoginModal({ visible, onClose }: LoginModalProps) {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+  const [acceptedEULA, setAcceptedEULA] = useState(false);
+  const [termsModalVisible, setTermsModalVisible] = useState(false);
+  const [guidelinesModalVisible, setGuidelinesModalVisible] = useState(false);
   const { signIn, signUp } = useAuth();
 
   const handleAuth = async () => {
     if (!email || !password) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     if (!isLogin && !username) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please enter a username');
       return;
     }
 
     if (!isLogin && username.length < 3) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Username must be at least 3 characters');
       return;
     }
 
     if (password.length < 6) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
+    if (!isLogin && !acceptedEULA) {
+      triggerHaptic('error');
+      Alert.alert('Error', 'You must accept the Terms of Service and Community Guidelines to create an account');
+      return;
+    }
+
+    triggerHaptic('medium');
     setLoading(true);
 
     try {
       if (isLogin) {
         const { error } = await signIn(email, password);
         if (error) {
+          triggerHaptic('error');
           Alert.alert('Login Failed', error.message);
         } else {
+          triggerHaptic('success');
           Alert.alert('Success', 'Logged in successfully!');
           onClose();
         }
       } else {
         const { error } = await signUp(email, password, username);
         if (error) {
+          triggerHaptic('error');
           Alert.alert('Signup Failed', error.message);
         } else {
+          triggerHaptic('success');
           Alert.alert(
             'Success', 
             'Account created successfully! Please check your email to verify your account.',
@@ -79,13 +100,16 @@ export default function LoginModal({ visible, onClose }: LoginModalProps) {
   };
 
   const toggleMode = () => {
+    triggerHaptic('light');
     setIsLogin(!isLogin);
     setEmail('');
     setPassword('');
     setUsername('');
+    setAcceptedEULA(false);
   };
 
   const handleClose = () => {
+    triggerHaptic('light');
     setEmail('');
     setPassword('');
     setUsername('');
@@ -163,6 +187,46 @@ export default function LoginModal({ visible, onClose }: LoginModalProps) {
                 />
               </View>
 
+              {!isLogin && (
+                <View style={styles.eulaContainer}>
+                  <TouchableOpacity
+                    style={styles.checkboxContainer}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      setAcceptedEULA(!acceptedEULA);
+                    }}
+                    disabled={loading}
+                  >
+                    <View style={[styles.checkbox, acceptedEULA && styles.checkboxChecked]}>
+                      {acceptedEULA && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                    <Text style={styles.eulaText}>
+                      I agree to the{' '}
+                      <Text 
+                        style={styles.linkText}
+                        onPress={() => {
+                          triggerHaptic('light');
+                          setTermsModalVisible(true);
+                        }}
+                      >
+                        Terms of Service
+                      </Text>
+                      {' '}and{' '}
+                      <Text 
+                        style={styles.linkText}
+                        onPress={() => {
+                          triggerHaptic('light');
+                          setGuidelinesModalVisible(true);
+                        }}
+                      >
+                        Community Guidelines
+                      </Text>
+                      . I understand there is zero tolerance for objectionable content or abusive users, and violations will result in immediate removal.
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               <TouchableOpacity
                 style={[styles.authButton, loading && styles.disabledButton]}
                 onPress={handleAuth}
@@ -204,6 +268,16 @@ export default function LoginModal({ visible, onClose }: LoginModalProps) {
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      <TermsModal
+        visible={termsModalVisible}
+        onClose={() => setTermsModalVisible(false)}
+      />
+
+      <CommunityGuidelinesModal
+        visible={guidelinesModalVisible}
+        onClose={() => setGuidelinesModalVisible(false)}
+      />
     </Modal>
   );
 }
@@ -332,5 +406,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     textAlign: 'center',
+  },
+  eulaContainer: {
+    marginBottom: 20,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: '#000',
+    backgroundColor: '#FFF',
+    marginRight: 12,
+    marginTop: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#000',
+  },
+  checkmark: {
+    color: '#FFF',
+    fontSize: 14,
+    fontFamily: 'Inter_800ExtraBold',
+  },
+  eulaText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#333',
+    lineHeight: 16,
+  },
+  linkText: {
+    color: '#000',
+    fontFamily: 'Inter_700Bold',
+    textDecorationLine: 'underline',
   },
 });

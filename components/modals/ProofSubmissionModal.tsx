@@ -16,6 +16,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface ProofSubmissionModalProps {
   visible: boolean;
@@ -40,6 +41,7 @@ export default function ProofSubmissionModal({
   const cameraRef = useRef<CameraView>(null);
 
   const handleClose = () => {
+    triggerHaptic('light');
     setPhotoUri(null);
     setCaption('');
     onClose();
@@ -48,11 +50,13 @@ export default function ProofSubmissionModal({
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
+        triggerHaptic('medium');
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.7,
         });
         setPhotoUri(photo?.uri || null);
       } catch (error) {
+        triggerHaptic('error');
         console.error('Error taking picture:', error);
         Alert.alert('Error', 'Failed to take picture');
       }
@@ -65,15 +69,18 @@ export default function ProofSubmissionModal({
     console.log('Caption:', caption);
 
     if (!photoUri) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please take a photo first');
       return;
     }
 
     if (!caption.trim()) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please add a caption');
       return;
     }
 
+    triggerHaptic('medium');
     setSubmitting(true);
     try {
       await onSubmit(photoUri, caption);
@@ -98,7 +105,10 @@ export default function ProofSubmissionModal({
             <Text style={styles.permissionText}>
               We need camera access to take your workout proof
             </Text>
-            <TouchableOpacity style={styles.button} onPress={requestPermission}>
+            <TouchableOpacity style={styles.button} onPress={() => {
+              triggerHaptic('medium');
+              requestPermission();
+            }}>
               <Text style={styles.buttonText}>GRANT PERMISSION</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.buttonSecondary} onPress={handleClose}>
@@ -129,7 +139,10 @@ export default function ProofSubmissionModal({
                 <View style={styles.bottomBar}>
                   <TouchableOpacity
                     style={styles.flipButton}
-                    onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      setFacing(facing === 'back' ? 'front' : 'back');
+                    }}
                   >
                     <Text style={styles.flipButtonText}>FLIP</Text>
                   </TouchableOpacity>
@@ -153,7 +166,10 @@ export default function ProofSubmissionModal({
               <View style={styles.topBar}>
                 <TouchableOpacity
                   style={styles.closeButton}
-                  onPress={() => setPhotoUri(null)}
+                  onPress={() => {
+                    triggerHaptic('light');
+                    setPhotoUri(null);
+                  }}
                 >
                   <Text style={styles.closeButtonText}>← RETAKE</Text>
                 </TouchableOpacity>

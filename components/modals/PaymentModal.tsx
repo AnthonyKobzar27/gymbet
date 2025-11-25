@@ -16,6 +16,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { createCheckoutSession, requestWithdrawal } from '../../lib/stripe_utils';
 import { getBalance } from '../../lib/transaction_utils';
 import { useAuth } from '../../contexts/AuthContext';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface PaymentModalProps {
   visible: boolean;
@@ -63,27 +64,32 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
     const paymentAmount = parseFloat(amount);
 
     if (!paymentAmount || paymentAmount <= 0) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (!userHash) {
+      triggerHaptic('error');
       Alert.alert('Error', 'User not authenticated');
       return;
     }
 
     if (type === 'withdraw' && paymentAmount > balance) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Insufficient balance');
       return;
     }
 
     if (type === 'deposit' && fees) {
       if (fees.total < 0.50) {
+        triggerHaptic('error');
         Alert.alert('Error', `Total charge must be at least $0.50 (Stripe requirement)\n\nYour total: $${fees.total.toFixed(2)}`);
         return;
       }
     }
 
+    triggerHaptic('medium');
     setLoading(true);
 
     try {
@@ -143,7 +149,10 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
             <Text style={styles.modalTitle}>
               {type === 'deposit' ? 'DEPOSIT FUNDS' : 'WITHDRAW FUNDS'}
             </Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={() => {
+              triggerHaptic('light');
+              onClose();
+            }}>
               <Text style={styles.modalTitle}>X</Text>
             </TouchableOpacity>
           </View>
@@ -167,7 +176,10 @@ export default function PaymentModal({ visible, onClose, type }: PaymentModalPro
               <TouchableOpacity
                 key={quickAmount}
                 style={styles.quickAmountButton}
-                onPress={() => setAmount(quickAmount.toString())}
+                onPress={() => {
+                  triggerHaptic('light');
+                  setAmount(quickAmount.toString());
+                }}
                 disabled={loading}
               >
                 <Text style={styles.quickAmountText}>${quickAmount}</Text>

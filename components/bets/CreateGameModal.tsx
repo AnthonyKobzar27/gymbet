@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { createGame, WeeklySchedule } from '@/lib/game_utils';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface CreateGameModalProps {
   visible: boolean;
@@ -161,13 +162,19 @@ export default function CreateGameModal({ visible, onClose, onGameCreated }: Cre
           <View style={styles.modalButtons}>
             <TouchableOpacity
               style={styles.modalButtonSecondary}
-              onPress={onClose}
+              onPress={() => {
+                triggerHaptic('light');
+                onClose();
+              }}
             >
               <Text style={styles.modalButtonSecondaryText}>CANCEL</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.modalButtonPrimary}
-              onPress={handleCreateGame}
+              onPress={() => {
+                triggerHaptic('medium');
+                handleCreateGame();
+              }}
             >
               <Text style={styles.modalButtonPrimaryText}>CREATE</Text>
             </TouchableOpacity>

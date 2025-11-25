@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, ImageBackground} from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
+import { triggerHaptic } from '@/lib/haptics';
 
 export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,15 +14,18 @@ export default function AuthScreen() {
 
   const handleAuth = async () => {
     if (!email || !password) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     if (password.length < 6) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
+    triggerHaptic('medium');
     setLoading(true);
 
     try {
@@ -30,6 +34,7 @@ export default function AuthScreen() {
         if (error) {
           Alert.alert('Login Failed', error.message);
         } else {
+          triggerHaptic('success');
           Alert.alert('Success', 'Logged in successfully!');
           router.back();
         }
@@ -38,6 +43,7 @@ export default function AuthScreen() {
         if (error) {
           Alert.alert('Signup Failed', error.message);
         } else {
+          triggerHaptic('success');
           Alert.alert(
             'Success', 
             'Account created successfully! Please check your email to verify your account.',
@@ -53,6 +59,7 @@ export default function AuthScreen() {
   };
 
   const toggleMode = () => {
+    triggerHaptic('light');
     setIsLogin(!isLogin);
     setEmail('');
     setPassword('');

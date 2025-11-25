@@ -9,6 +9,7 @@ import ProofSubmissionModal from '@/components/modals/ProofSubmissionModal';
 import CreateGameModal from '@/components/bets/CreateGameModal';
 import ActiveGameView from '@/components/bets/ActiveGameView';
 import JoinableGamesView from '@/components/bets/JoinableGamesView';
+import { triggerHaptic } from '@/lib/haptics';
 import {
   getJoinableGames,
   getUserActiveGame,
@@ -78,7 +79,8 @@ export default function BetsScreen() {
       const userSubmission = submissions.find(s => s.user_hash === userHash);
       setHasSubmittedToday(!!userSubmission);
     } else {
-      const joinable = await getJoinableGames();
+      // If user is not in a game, only show free games (stake = 0)
+      const joinable = await getJoinableGames(true);
       setJoinableGames(joinable);
       setActiveGame(null);
     }
@@ -86,12 +88,15 @@ export default function BetsScreen() {
 
   const handleJoinGame = async (gameId: string) => {
     if (!userHash) {
+      triggerHaptic('error');
       Alert.alert('Error', 'User not authenticated');
       return;
     }
 
+    triggerHaptic('medium');
     const gameDetails = await getGameDetails(gameId);
     if (!gameDetails) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Could not load game details');
       return;
     }
@@ -99,6 +104,7 @@ export default function BetsScreen() {
     const result = await joinGame(gameId, userHash);
 
     if (result.ok) {
+      triggerHaptic('success');
       await setupGameNotifications();
 
       Alert.alert(
@@ -107,6 +113,7 @@ export default function BetsScreen() {
       );
       loadGames();
     } else {
+      triggerHaptic('error');
       Alert.alert('Error', `Failed to join game: ${result.error?.message || 'Unknown error'}`);
     }
   };
@@ -114,22 +121,26 @@ export default function BetsScreen() {
   const handleLeaveGame = async () => {
     if (!activeGame || !userHash) return;
 
+    triggerHaptic('warning');
     Alert.alert(
       'Leave Game?',
       `Are you sure you want to leave? You will get your $${activeGame.stake} stake refunded.`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel', onPress: () => triggerHaptic('light') },
         {
           text: 'Leave',
           style: 'destructive',
           onPress: async () => {
+            triggerHaptic('medium');
             const result = await leaveGame(activeGame.id, userHash);
 
             if (result.ok) {
+              triggerHaptic('success');
               await clearGameNotifications();
               Alert.alert('Success', `You left the game and received a $${result.refunded} refund!`);
               loadGames();
             } else {
+              triggerHaptic('error');
               Alert.alert('Error', `Failed to leave game: ${result.error?.message || 'Unknown error'}`);
             }
           },
@@ -141,6 +152,7 @@ export default function BetsScreen() {
   const handleProofSubmit = async (photoUri: string, caption: string) => {
     if (!activeGame || !userHash) return;
 
+    triggerHaptic('medium');
     const result = await submitWakeupProof(
       activeGame.id,
       userHash,
@@ -150,6 +162,7 @@ export default function BetsScreen() {
     );
 
     if (result.ok) {
+      triggerHaptic(result.isOnTime ? 'success' : 'warning');
       Alert.alert(
         'Success!',
         result.isOnTime
@@ -158,6 +171,7 @@ export default function BetsScreen() {
       );
       loadGames();
     } else {
+      triggerHaptic('error');
       throw new Error(result.error?.message || 'Failed to submit proof');
     }
   };
@@ -165,6 +179,7 @@ export default function BetsScreen() {
   const handleSendMessage = async () => {
     if (!activeGame || !userHash || !chatMessage.trim()) return;
 
+    triggerHaptic('light');
     setSendingMessage(true);
     try {
       const result = await sendChatMessage(activeGame.id, userHash, chatMessage);
@@ -173,6 +188,7 @@ export default function BetsScreen() {
         setChatMessage('');
         loadGames();
       } else {
+        triggerHaptic('error');
         Alert.alert('Error', 'Failed to send message');
       }
     } catch (error) {
@@ -204,7 +220,10 @@ export default function BetsScreen() {
         <GuestView
           title="Bets"
           subtitle="Please login to view and join games"
-          onLoginPress={() => setLoginModalVisible(true)}
+          onLoginPress={() => {
+            triggerHaptic('medium');
+            setLoginModalVisible(true);
+          }}
         />
       ) : (
         <SafeAreaView style={{ flex: 1 }}>
@@ -220,7 +239,10 @@ export default function BetsScreen() {
                     selectedTab={selectedTab}
                     onTabChange={setSelectedTab}
                     hasSubmittedToday={hasSubmittedToday}
-                    onSubmitProof={() => setProofModalVisible(true)}
+                    onSubmitProof={() => {
+                      triggerHaptic('medium');
+                      setProofModalVisible(true);
+                    }}
                     onLeaveGame={handleLeaveGame}
                     chatMessage={chatMessage}
                     onChatMessageChange={setChatMessage}
@@ -232,7 +254,10 @@ export default function BetsScreen() {
                   <JoinableGamesView
                     joinableGames={joinableGames}
                     onJoinGame={handleJoinGame}
-                    onCreateGame={() => setCreateModalVisible(true)}
+                    onCreateGame={() => {
+                      triggerHaptic('medium');
+                      setCreateModalVisible(true);
+                    }}
                     formatDate={formatDate}
                   />
                 )}

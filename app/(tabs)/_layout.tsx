@@ -7,10 +7,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import { Image } from 'react-native';
 import LoginModal from '@/components/modals/LoginModal';
-import DepositAmountModal from '@/components/modals/DepositAmountModal';
+import HowToPlayModal from '@/components/modals/HowToPlayModal';
 import { router } from 'expo-router';
-import { getBalance } from '@/lib/transaction_utils';
 import { useFocusEffect } from '@react-navigation/native';
+import { triggerHaptic } from '@/lib/haptics';
+import { HapticTab } from '@/components/haptic-tab';
 
 
 function TabBarIcon(props: {
@@ -21,36 +22,18 @@ function TabBarIcon(props: {
 }
 
 export function HeaderRight() {
-  const { user, signOut, getUserProfile } = useAuth();
-  const [balance, setBalance] = useState(0);
+  const { user, getUserProfile } = useAuth();
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
-  const [depositModalVisible, setDepositModalVisible] = useState(false);
+  const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
 
   useEffect(() => {
     if (user) {
       loadUserProfile();
     } else {
       setUserProfile(null);
-      setBalance(0);
     }
   }, [user]);
-
-  useEffect(() => {
-    if (userProfile?.hash) {
-      loadBalance();
-    }
-  }, [userProfile]);
-
-  useEffect(() => {
-    if (!userProfile?.hash) return;
-
-    const interval = setInterval(() => {
-      loadBalance();
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [userProfile]);
 
   const loadUserProfile = async () => {
     if (user) {
@@ -59,55 +42,24 @@ export function HeaderRight() {
     }
   };
 
-  const loadBalance = async () => {
-    if (userProfile?.hash) {
-      const newBalance = await getBalance(userProfile.hash);
-      setBalance(newBalance);
-    }
-  };
-
   const handleProfilePress = () => {
+    triggerHaptic('light');
     router.push('/profile');
   };
 
-  const handleConnect = async () => {
-    if (!user) {
-      setLoginModalVisible(true);
-      return;
-    }
-    setDepositModalVisible(true);
-  };
-
-  const handleDepositAmountSelected = async (amount: number) => {
-    if (!userProfile?.hash) return;
-
-    try {
-      const { createCheckoutSession } = await import('@/lib/stripe_utils');
-      const WebBrowser = await import('expo-web-browser');
-      const sessionUrl = await createCheckoutSession(amount, userProfile.hash);
-      await WebBrowser.openBrowserAsync(sessionUrl);
-      setTimeout(() => {
-        loadBalance();
-      }, 2000);
-    } catch (error) {
-      console.error('Error opening Stripe Checkout:', error);
-    }
+  const handleHowToPlayPress = () => {
+    triggerHaptic('medium');
+    setHowToPlayModalVisible(true);
   };
 
   return (
     <View style={styles.headerRightContainer}>
-      {user && (
-        <View style={styles.balanceContainer}>
-          <Text style={styles.balanceText}>${balance.toFixed(2)}</Text>
-        </View>
-      )}
-
       <TouchableOpacity
         style={styles.cryptoButton}
-        onPress={handleConnect}
+        onPress={handleHowToPlayPress}
       >
         <Text style={styles.cryptoButtonText}>
-          {user ? 'Deposit' : 'Login'}
+          How to Play
         </Text>
       </TouchableOpacity>
 
@@ -130,10 +82,9 @@ export function HeaderRight() {
         onClose={() => setLoginModalVisible(false)}
       />
 
-      <DepositAmountModal
-        visible={depositModalVisible}
-        onClose={() => setDepositModalVisible(false)}
-        onSelectAmount={handleDepositAmountSelected}
+      <HowToPlayModal
+        visible={howToPlayModalVisible}
+        onClose={() => setHowToPlayModalVisible(false)}
       />
     </View>
   );
@@ -147,6 +98,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: '#FFFFFF',
         tabBarInactiveTintColor: '#FFFFFF',
+        tabBarButton: (props) => <HapticTab {...props} />,
         tabBarStyle: {
           backgroundColor: '#0b0930',
           borderTopWidth: 0,
@@ -187,7 +139,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="bets"
         options={{
-          title: 'BETS',
+          title: 'GAMES',
           tabBarIcon: ({ color }) => <TabBarIcon name="trophy" color={"white"} />,
         }}
       />
@@ -207,48 +159,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  balanceContainer: {
-    backgroundColor: '#000000',
-    borderWidth: 2,
-    borderColor: '#000000',
-    borderRadius: 0,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    shadowColor: '#000000',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-    marginBottom: 10,
-  },
-  balanceText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
-    textAlign: 'center',
-  },
-  cryptoButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#000000',
-    borderRadius: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-    marginBottom: 10,
-  },
-  cryptoButtonText: {
-    color: '#000000',
-    fontSize: 12,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
-    textAlign: 'center',
   },
   profileBubble: {
     width: 40,
@@ -275,5 +185,26 @@ const styles = StyleSheet.create({
   profileBubbleGuest: {
     backgroundColor: '#E0E0E0',
     borderColor: '#999999',
+  },
+  cryptoButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+    marginBottom: 10,
+  },
+  cryptoButtonText: {
+    color: '#000000',
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+    textAlign: 'center',
   },
 });

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Image, Mod
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle } from 'react-native-svg';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStats, addWorkout, canLogWorkoutToday as checkCanLogWorkout } from '@/lib/homepage_utils';
 import { subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes, getProofsForValidator, checkPBFTValidation } from '@/lib/activity_log_utils';
@@ -10,6 +11,9 @@ import { getUserActiveGame, getGameDetails, getJoinableGames, joinGame } from '@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { UserAvatar } from '@/components/Avatar';
+import { triggerHaptic } from '@/lib/haptics';
+import FlagBlockModal from '@/components/modals/FlagBlockModal';
+import { flagPost, blockUser, getBlockedUsers } from '@/lib/flagging_utils';
 
 interface FeedItem {
   id: string;
@@ -36,10 +40,14 @@ export default function HomeScreen() {
   const [splitInput, setSplitInput] = useState('');
   const [currentSplitDay, setCurrentSplitDay] = useState('');
   const [canLogWorkoutToday, setCanLogWorkoutToday] = useState(true);
+  const [flagBlockModalVisible, setFlagBlockModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
 
   useEffect(() => {
     loadUserData();
     loadFeed();
+    loadBlockedUsers();
 
     const unsubscribe = subscribeToActivityFeed((newLog) => {
       const newItem: FeedItem = {
@@ -63,7 +71,9 @@ export default function HomeScreen() {
       loadUserData();
       checkActiveGame();
       if (userHash) {
-        loadFeed();
+        loadBlockedUsers().then(() => {
+          loadFeed();
+        });
       }
     }, [userHash])
   );
@@ -150,7 +160,54 @@ export default function HomeScreen() {
       };
     });
 
-    setFeedItems(items);
+    // Filter out blocked users
+    const currentBlocked = await getBlockedUsers(userHash);
+    const filteredItems = items.filter(item => !currentBlocked.includes(item.userHash));
+    setFeedItems(filteredItems);
+  };
+
+  const loadBlockedUsers = async () => {
+    if (!userHash) return;
+    const blocked = await getBlockedUsers(userHash);
+    setBlockedUsers(blocked);
+  };
+
+  const handleFlagPost = async (reason: string) => {
+    if (!selectedItem || !userHash) return;
+    
+    const result = await flagPost(
+      selectedItem.id,
+      selectedItem.userHash,
+      userHash,
+      selectedItem.image || null,
+      selectedItem.action || null,
+      reason
+    );
+
+    if (result.ok) {
+      triggerHaptic('success');
+      Alert.alert('Success', 'Post has been flagged. We will review it within 24 hours.');
+      loadFeed();
+    } else {
+      triggerHaptic('error');
+      Alert.alert('Error', 'Failed to flag post. Please try again.');
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!selectedItem || !userHash) return;
+    
+    const result = await blockUser(userHash, selectedItem.userHash);
+    
+    if (result.ok) {
+      triggerHaptic('success');
+      Alert.alert('Success', 'User has been blocked. You will no longer see their content.');
+      await loadBlockedUsers();
+      loadFeed();
+    } else {
+      triggerHaptic('error');
+      Alert.alert('Error', 'Failed to block user. Please try again.');
+    }
   };
 
   const formatTimestamp = (timestep: string): string => {
@@ -166,24 +223,29 @@ export default function HomeScreen() {
   };
 
   const handleOpenSplitModal = () => {
+    triggerHaptic('light');
     setSplitInput('');
     setSplitModalVisible(true);
   };
 
   const handleSubmitWorkout = async () => {
     if (!userHash) {
+      triggerHaptic('error');
       Alert.alert('Error', 'User not authenticated');
       return;
     }
 
     if (!splitInput.trim()) {
+      triggerHaptic('error');
       Alert.alert('Invalid Input', 'Please enter the workout for today (e.g., Push, Pull, Legs)');
       return;
     }
 
+    triggerHaptic('medium');
     setSplitModalVisible(false);
     const result = await addWorkout(userHash, splitInput.trim());
     if (result.ok) {
+      triggerHaptic('success');
       Alert.alert('Success', `Logged ${splitInput} workout!`);
       setCanLogWorkoutToday(false);
       loadUserData();
@@ -192,8 +254,10 @@ export default function HomeScreen() {
       const errorMessage = result.error?.message || 'Unknown error';
 
       if (errorMessage.includes('already logged workout today')) {
+        triggerHaptic('warning');
         Alert.alert('Already Logged', 'You have already logged your workout for today. Come back tomorrow!');
       } else {
+        triggerHaptic('error');
         Alert.alert('Error', `Failed to log workout: ${errorMessage}`);
       }
     }
@@ -201,9 +265,12 @@ export default function HomeScreen() {
 
   const handleVote = async (activityId: string, voteType: 'approve' | 'reject') => {
     if (!userHash) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please log in to vote');
       return;
     }
+
+    triggerHaptic('light');
 
     const activityIdNum = parseInt(activityId);
     const currentItem = feedItems.find((item) => item.id === activityId);
@@ -262,8 +329,10 @@ export default function HomeScreen() {
       const validation = await checkPBFTValidation(activityIdNum);
 
       if (validation.status === 'approved') {
+        triggerHaptic('success');
         Alert.alert('Proof Approved!', 'This proof has been validated by 2/3 majority (PBFT consensus)');
       } else if (validation.status === 'rejected') {
+        triggerHaptic('error');
         Alert.alert('Proof Rejected', 'This proof was rejected by the validators');
       }
     } catch (error) {
@@ -274,14 +343,19 @@ export default function HomeScreen() {
 
   const handleJoinRandomGame = async () => {
     if (!userHash) {
+      triggerHaptic('error');
       Alert.alert('Error', 'Please log in first');
       return;
     }
 
-    const games = await getJoinableGames();
+    triggerHaptic('medium');
+    
+    // Always only show free games (stake = $0) for random join
+    const games = await getJoinableGames(true);
 
     if (games.length === 0) {
-      Alert.alert('No Games Available', 'There are no games to join right now. Create a new game instead!');
+      triggerHaptic('warning');
+      Alert.alert('No Games Available', 'There are no free games to join right now!');
       return;
     }
 
@@ -289,12 +363,14 @@ export default function HomeScreen() {
     const result = await joinGame(randomGame.id, userHash);
 
     if (result.ok) {
-      Alert.alert('Success!', `Joined game with $${randomGame.stake} stake!`);
+      triggerHaptic('success');
+      Alert.alert('Success!', 'Joined free game!');
 
       await checkActiveGame();
 
       router.push('/bets');
     } else {
+      triggerHaptic('error');
       console.error('Failed to join game:', result.error);
       Alert.alert('Error', result.error?.message || 'Failed to join game');
     }
@@ -315,11 +391,7 @@ export default function HomeScreen() {
         <View style={styles.content}>
 
           {/* Training Split Tracker */}
-          <TouchableOpacity
-            style={styles.arcadeCard}
-            onPress={canLogWorkoutToday && hasActiveGame ? handleOpenSplitModal : undefined}
-            disabled={!canLogWorkoutToday || !hasActiveGame}
-          >
+          <View style={styles.arcadeCard}>
             <View style={styles.cardInner}>
               <Text style={styles.cardTitle}>WEEKLY SPLIT</Text>
               <View style={styles.spacer} />
@@ -362,14 +434,6 @@ export default function HomeScreen() {
               )}
 
             </View>
-          </TouchableOpacity>
-
-          {/* Total Profit */}
-          <View style={styles.arcadeCard}>
-            <View style={styles.cardInner}>
-              <Text style={styles.statLabel}>TOTAL PROFIT</Text>
-              <Text style={styles.statValue}>${profitMade.toFixed(2)}</Text>
-            </View>
           </View>
 
           {/* Feed Section */}
@@ -398,6 +462,18 @@ export default function HomeScreen() {
                             <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
                           </View>
                         </View>
+                        {(item.type === 'workout' || item.type === 'proof') && item.image && (
+                          <TouchableOpacity
+                            style={styles.moreButton}
+                            onPress={() => {
+                              triggerHaptic('light');
+                              setSelectedItem(item);
+                              setFlagBlockModalVisible(true);
+                            }}
+                          >
+                            <FontAwesome name="ellipsis-v" size={16} color="#000" />
+                          </TouchableOpacity>
+                        )}
                       </View>
                       <Text style={[
                         styles.feedAction,
@@ -450,7 +526,13 @@ export default function HomeScreen() {
                 </ScrollView>
               )}
 
-              <TouchableOpacity style={styles.viewMoreButton} onPress={loadFeed}>
+              <TouchableOpacity 
+                style={styles.viewMoreButton} 
+                onPress={() => {
+                  triggerHaptic('light');
+                  loadFeed();
+                }}
+              >
                 <Text style={styles.viewMoreText}>REFRESH ACTIVITY →</Text>
               </TouchableOpacity>
             </View>
@@ -458,27 +540,32 @@ export default function HomeScreen() {
           
           {/* Action Buttons - Only show if user doesn't have an active game */}
           {!hasActiveGame && (
-            <>
-              <TouchableOpacity
-                style={styles.buttonPrimary}
-                onPress={() => router.push('/bets')}
-              >
-                <Text style={styles.buttonPrimaryText}>CREATE NEW GAME</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.buttonSecondary}
-                onPress={handleJoinRandomGame}
-              >
-                <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              style={styles.buttonSecondary}
+              onPress={handleJoinRandomGame}
+            >
+              <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
+            </TouchableOpacity>
           )}
           
         </View>
       </ScrollView>
       </View>
     </SafeAreaView>
+
+    {/* Flag/Block Modal */}
+    {selectedItem && (
+      <FlagBlockModal
+        visible={flagBlockModalVisible}
+        onClose={() => {
+          setFlagBlockModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onFlag={handleFlagPost}
+        onBlock={handleBlockUser}
+        userHash={selectedItem.userHash}
+      />
+    )}
 
     {/* Workout Split Log Modal */}
     <Modal
@@ -504,7 +591,10 @@ export default function HomeScreen() {
           <View style={styles.sleepModalButtons}>
             <TouchableOpacity
               style={styles.sleepModalButtonSecondary}
-              onPress={() => setSplitModalVisible(false)}
+              onPress={() => {
+                triggerHaptic('light');
+                setSplitModalVisible(false);
+              }}
             >
               <Text style={styles.sleepModalButtonSecondaryText}>CANCEL</Text>
             </TouchableOpacity>
@@ -648,6 +738,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  moreButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   feedUserInfo: {
     marginLeft: 10,

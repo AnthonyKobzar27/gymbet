@@ -12,20 +12,25 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
 import LoginModal from '@/components/modals/LoginModal';
 import PaymentModal from '@/components/modals/PaymentModal';
+import BlockedUsersModal from '@/components/modals/BlockedUsersModal';
 import { getStats } from '@/lib/homepage_utils';
 import { getBalance } from '@/lib/transaction_utils';
 import { getUserGames, getUserActiveGame, getGameDetails, GameWithPlayers } from '@/lib/game_utils';
+import { triggerHaptic } from '@/lib/haptics';
 
 export default function ProfileScreen() {
-  const { user, signOut, loading, getUserProfile } = useAuth();
+  const { user, signOut, loading, getUserProfile, deleteAccount } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [blockedUsersModalVisible, setBlockedUsersModalVisible] = useState(false);
 
   const [balance, setBalance] = useState(0);
   const [totalProfit, setTotalProfit] = useState(0);
@@ -99,6 +104,51 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!userProfile?.hash) {
+              Alert.alert('Error', 'Unable to delete account. User profile not found.');
+              return;
+            }
+
+            triggerHaptic('error');
+            setDeletingAccount(true);
+
+            try {
+              const result = await deleteAccount(userProfile.hash);
+              
+              if (result.error) {
+                Alert.alert(
+                  'Error',
+                  result.error.message || 'Failed to delete account. Please try again or contact support.'
+                );
+                setDeletingAccount(false);
+              } else {
+                Alert.alert(
+                  'Account Deleted',
+                  'Your account has been successfully deleted.',
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (error) {
+              console.error('Delete account error:', error);
+              Alert.alert('Error', 'An unexpected error occurred. Please try again or contact support.');
+              setDeletingAccount(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -127,7 +177,10 @@ export default function ProfileScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.loginButton}
-                onPress={() => setLoginModalVisible(true)}
+                onPress={() => {
+                  triggerHaptic('medium');
+                  setLoginModalVisible(true);
+                }}
               >
                 <Text style={styles.loginButtonText}>LOGIN</Text>
               </TouchableOpacity>
@@ -186,20 +239,21 @@ export default function ProfileScreen() {
                     {userProfile?.username || 'Loading...'}
                   </Text>
                   <Text style={styles.email}>{userProfile?.email || ''}</Text>
+                  {userProfile?.hash && (
+                    <TouchableOpacity
+                      style={styles.settingsButton}
+                      onPress={() => {
+                        triggerHaptic('light');
+                        setBlockedUsersModalVisible(true);
+                      }}
+                    >
+                      <FontAwesome name="cog" size={20} color="#000" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* Metrics Cards */}
                 <View style={styles.metricsContainer}>
-
-
-                  {/* Total Profit Card */}
-                  <View style={styles.metricCard}>
-                    <View style={styles.cardInner}>
-                      <Text style={styles.metricLabel}>TOTAL PROFIT</Text>
-                      <Text style={styles.metricValue}>${totalProfit.toFixed(2)}</Text>
-                    </View>
-                  </View>
-
                   {/* Total Workouts Card */}
                   <View style={styles.metricCard}>
                     <View style={styles.cardInner}>
@@ -215,13 +269,15 @@ export default function ProfileScreen() {
                       <Text style={styles.metricValue}>{gamesPlayed}</Text>
                     </View>
                   </View>
-
                 </View>
 
                 {/* Sign Out Button */}
                 <TouchableOpacity
                   style={styles.signOutButton}
-                  onPress={handleSignOut}
+                  onPress={() => {
+                    triggerHaptic('warning');
+                    handleSignOut();
+                  }}
                   disabled={signingOut}
                 >
                   {signingOut ? (
@@ -231,20 +287,20 @@ export default function ProfileScreen() {
                   )}
                 </TouchableOpacity>
 
-                {/* Balance Card */}
-                <View style={styles.balanceCard}>
-                  <View style={styles.cardInner}>
-                    <Text style={styles.balanceLabel}>ACCOUNT BALANCE</Text>
-                    <Text style={styles.balanceValue}>${balance.toFixed(2)}</Text>
-                  </View>
-                </View>
-
-                {/* Withdraw Button */}
+                {/* Delete Account Button */}
                 <TouchableOpacity
-                  style={styles.withdrawButton}
-                  onPress={() => setWithdrawModalVisible(true)}
+                  style={styles.deleteAccountButton}
+                  onPress={() => {
+                    triggerHaptic('error');
+                    handleDeleteAccount();
+                  }}
+                  disabled={deletingAccount}
                 >
-                  <Text style={styles.withdrawButtonText}>WITHDRAW FUNDS</Text>
+                  {deletingAccount ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.deleteAccountButtonText}>DELETE ACCOUNT</Text>
+                  )}
                 </TouchableOpacity>
 
             </View>
@@ -267,6 +323,14 @@ export default function ProfileScreen() {
         }}
         type="withdraw"
       />
+
+      {userProfile?.hash && (
+        <BlockedUsersModal
+          visible={blockedUsersModalVisible}
+          onClose={() => setBlockedUsersModalVisible(false)}
+          userHash={userProfile.hash}
+        />
+      )}
     </>
   );
 }
@@ -348,6 +412,25 @@ const styles = StyleSheet.create({
   profileHeader: {
     alignItems: 'center',
     marginBottom: 32,
+    position: 'relative',
+  },
+  settingsButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
   },
   avatar: {
     width: 100,
@@ -385,10 +468,9 @@ const styles = StyleSheet.create({
 
   // Balance Card
   balanceCard: {
-    backgroundColor: '#fdcff3',
+    backgroundColor: '#FFFFFF',
     borderWidth: 4,
     borderColor: '#000000',
-    marginTop: 24,
     marginBottom: 16,
     shadowColor: '#000000',
     shadowOffset: { width: 6, height: 6 },
@@ -415,7 +497,8 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: '#000000',
     paddingVertical: 18,
-    marginBottom: 24,
+    marginTop: 16,
+    marginBottom: 16,
     alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 4, height: 4 },
@@ -516,7 +599,7 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: '#000000',
     paddingVertical: 18,
-    marginTop: 16,
+    marginBottom: 16,
     alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 4, height: 4 },
@@ -529,5 +612,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 1,
+  },
+  deleteAccountButton: {
+    backgroundColor: '#FF4444',
+    borderWidth: 3,
+    borderColor: '#FF4444',
+    paddingVertical: 12,
+    marginBottom: 24,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 3, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+  deleteAccountButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
   },
 });

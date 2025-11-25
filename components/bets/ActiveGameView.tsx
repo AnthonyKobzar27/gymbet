@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { GameWithPlayers } from '@/lib/game_utils';
 import { UserAvatar } from '@/components/Avatar';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface ActiveGameViewProps {
   activeGame: GameWithPlayers;
@@ -102,7 +103,10 @@ export default function ActiveGameView({
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tab, selectedTab === 'players' && styles.tabActive]}
-          onPress={() => onTabChange('players')}
+          onPress={() => {
+            triggerHaptic('light');
+            onTabChange('players');
+          }}
         >
           <Text style={[styles.tabText, selectedTab === 'players' && styles.tabTextActive]}>
             PLAYERS
@@ -110,7 +114,10 @@ export default function ActiveGameView({
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, selectedTab === 'log' && styles.tabActive]}
-          onPress={() => onTabChange('log')}
+          onPress={() => {
+            triggerHaptic('light');
+            onTabChange('log');
+          }}
         >
           <Text style={[styles.tabText, selectedTab === 'log' && styles.tabTextActive]}>
             LOG
@@ -181,7 +188,12 @@ export default function ActiveGameView({
                 />
                 <TouchableOpacity
                   style={[styles.sendButton, (sendingMessage || !chatMessage.trim()) && styles.sendButtonDisabled]}
-                  onPress={onSendMessage}
+                  onPress={() => {
+                    if (!sendingMessage && chatMessage.trim()) {
+                      triggerHaptic('light');
+                    }
+                    onSendMessage();
+                  }}
                   disabled={sendingMessage || !chatMessage.trim()}
                 >
                   {sendingMessage ? (
@@ -202,7 +214,12 @@ export default function ActiveGameView({
           styles.submitProofButton,
           (hasSubmittedToday || activeGame.status !== 'active') && styles.submitProofButtonDisabled
         ]}
-        onPress={onSubmitProof}
+        onPress={() => {
+          if (!hasSubmittedToday && activeGame.status === 'active') {
+            triggerHaptic('medium');
+          }
+          onSubmitProof();
+        }}
         disabled={hasSubmittedToday || activeGame.status !== 'active'}
       >
         <Text style={styles.submitProofButtonText} numberOfLines={1}>
@@ -218,7 +235,10 @@ export default function ActiveGameView({
       {activeGame.status === 'joinable' && (
         <TouchableOpacity
           style={styles.leaveGameButton}
-          onPress={onLeaveGame}
+          onPress={() => {
+            triggerHaptic('warning');
+            onLeaveGame();
+          }}
         >
           <Text style={styles.leaveGameButtonText} numberOfLines={1}>
             LEAVE GAME

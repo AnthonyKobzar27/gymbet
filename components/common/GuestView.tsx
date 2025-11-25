@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { triggerHaptic } from '@/lib/haptics';
 
 interface GuestViewProps {
   title: string;
@@ -12,7 +13,13 @@ export default function GuestView({ title, subtitle, onLoginPress }: GuestViewPr
     <View style={styles.guestContainer}>
       <Text style={styles.guestTitle}>{title}</Text>
       <Text style={styles.guestSubtitle}>{subtitle}</Text>
-      <TouchableOpacity style={styles.loginButton} onPress={onLoginPress}>
+      <TouchableOpacity 
+        style={styles.loginButton} 
+        onPress={() => {
+          triggerHaptic('medium');
+          onLoginPress();
+        }}
+      >
         <Text style={styles.loginButtonText}>LOGIN</Text>
       </TouchableOpacity>
     </View>

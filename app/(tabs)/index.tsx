@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import LoginModal from '@/components/modals/LoginModal';
 import HomeFeed from '@/components/comps/homescreen';
+import { triggerHaptic } from '@/lib/haptics';
 
 
 const ActivityItem = ({ activity }: { activity: any }) => (
@@ -91,17 +92,6 @@ export default function HomeScreen() {
       router.push('/auth');
       return;
     }
-
-    
-  };
-
-  const handleCreateGame = () => {
-    if (!user) {
-      Alert.alert('Login Required', 'Please login to create challenges');
-      router.push('/auth');
-      return;
-    }
-    router.push('/create-game');
   };
 
   if (authLoading) {
@@ -129,7 +119,10 @@ export default function HomeScreen() {
               </Text>
               <TouchableOpacity 
                 style={styles.loginPromptButton}
-                onPress={() => setLoginModalVisible(true)}
+                onPress={() => {
+                  triggerHaptic('medium');
+                  setLoginModalVisible(true);
+                }}
               >
                 <Text style={styles.loginPromptButtonText}>LOG IN / SIGN UP</Text>
               </TouchableOpacity>

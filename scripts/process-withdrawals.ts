@@ -2,7 +2,8 @@
  * Admin script to process withdrawal requests
  *
  * Usage:
- *   npx ts-node scripts/process-withdrawals.ts list
+ *   npx ts-node scripts/process-withdrawals.ts list          # List pending withdrawals
+ *   npx ts-node scripts/process-withdrawals.ts list-all      # List all withdrawals (all statuses)
  *   npx ts-node scripts/process-withdrawals.ts process <withdrawal_id>
  *   npx ts-node scripts/process-withdrawals.ts process-all
  */

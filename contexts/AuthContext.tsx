@@ -12,6 +12,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username : string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  deleteAccount: (userHash: string) => Promise<{ error: any }>;
   getUserProfile: () => Promise<{ username: string; email: string; hash: string, balance: number } | null>;
 }
 
@@ -116,6 +117,108 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deleteAccount = async (userHash: string) => {
+    try {
+      setLoading(true);
+      
+      if (!user) {
+        return { error: { message: 'No user logged in' } };
+      }
+
+      // Delete all user-related data by hash
+      // Note: Records with user_id will be cascade deleted when auth user is deleted
+      
+      // Delete from hash_to_value (balance)
+      const { error: balanceError } = await supabase
+        .from('hash_to_value')
+        .delete()
+        .eq('hash', userHash);
+
+      if (balanceError) {
+        console.error('Error deleting balance:', balanceError);
+      }
+
+      // Delete from transactions
+      const { error: transactionsError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_hash', userHash);
+
+      if (transactionsError) {
+        console.error('Error deleting transactions:', transactionsError);
+      }
+
+      // Delete from home_page_top
+      const { error: statsError } = await supabase
+        .from('home_page_top')
+        .delete()
+        .eq('user_hash', userHash);
+
+      if (statsError) {
+        console.error('Error deleting stats:', statsError);
+      }
+
+      // Delete from game_players
+      const { error: gamePlayersError } = await supabase
+        .from('game_players')
+        .delete()
+        .eq('user_hash', userHash);
+
+      if (gamePlayersError) {
+        console.error('Error deleting game players:', gamePlayersError);
+      }
+
+      // Delete from activity_log
+      const { error: activityLogError } = await supabase
+        .from('activity_log')
+        .delete()
+        .eq('user_hash', userHash);
+
+      if (activityLogError) {
+        console.error('Error deleting activity log:', activityLogError);
+      }
+
+      // Delete from proof_votes
+      const { error: proofVotesError } = await supabase
+        .from('proof_votes')
+        .delete()
+        .eq('voter_hash', userHash);
+
+      if (proofVotesError) {
+        console.error('Error deleting proof votes:', proofVotesError);
+      }
+
+      // Delete profile record by hash (this should be last)
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('hash', userHash);
+
+      if (profileError) {
+        console.error('Error deleting profile:', profileError);
+        return { error: profileError };
+      }
+
+      // Note: Auth user deletion requires server-side admin access
+      // The profile and all user data have been deleted
+      // The auth user record will remain but won't have any associated data
+      // In production, you may want to create an edge function to delete the auth user
+
+      // Sign out after successful deletion
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+
+      console.log('✅ Account deleted successfully');
+      return { error: null };
+    } catch (err) {
+      console.error('Delete account error:', err);
+      return { error: err };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getUserProfile = async () => {
     if (!user) return null;
 
@@ -152,6 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp,
     signIn,
     signOut,
+    deleteAccount,
     getUserProfile,
   };
 
