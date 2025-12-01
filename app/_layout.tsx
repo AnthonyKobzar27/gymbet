@@ -1,9 +1,9 @@
+import React, { useEffect, useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
@@ -15,6 +15,7 @@ if (Platform.OS !== 'web') {
   StripeProvider = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 }
 import { AuthProvider } from '@/contexts/AuthContext';
+import { LaunchOverlay } from '@/components/LaunchOverlay';
 
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_your_key_here';
 
@@ -57,6 +58,7 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const [showIntro, setShowIntro] = useState(true);
 
   return (
     <StripeProvider
@@ -65,13 +67,19 @@ function RootLayoutNav() {
     >
       <AuthProvider>
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <Stack>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-              <Stack.Screen name="mission" options={{ headerShown: false }} />
-              <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
-              <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
-            </Stack>
+            <React.Fragment>
+              <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+                <Stack.Screen name="mission" options={{ headerShown: false }} />
+                <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
+                <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
+              </Stack>
+
+              {showIntro && (
+                <LaunchOverlay onFinished={() => setShowIntro(false)} />
+              )}
+            </React.Fragment>
           </ThemeProvider>
       </AuthProvider>
     </StripeProvider>

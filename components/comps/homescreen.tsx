@@ -25,6 +25,11 @@ interface FeedItem {
   approvals?: number;
   rejections?: number;
   userVote?: 'approve' | 'reject' | null;
+  createdAt?: Date;
+  isPending?: boolean;
+  timeRemaining?: number; // hours remaining
+  validationStatus?: 'pending' | 'approved' | 'rejected';
+  canVote?: boolean; // Whether user can vote on this proof
 }
 
 export default function HomeScreen() {
@@ -138,27 +143,111 @@ export default function HomeScreen() {
       getUserVotes(allProofIds, userHash),
     ]);
 
-    const sortedLogs = allActivityLogs
-      .sort((a, b) => new Date(b.timestep).getTime() - new Date(a.timestep).getTime())
-      .slice(0, 50);
+    // Separate proofs from other activity
+    const proofLogs = allActivityLogs.filter(log => 
+      log.typeofmessage === 'workout' || log.typeofmessage === 'proof'
+    );
+    const otherLogs = allActivityLogs.filter(log => 
+      log.typeofmessage !== 'workout' && log.typeofmessage !== 'proof'
+    );
 
-    const items: FeedItem[] = sortedLogs.map(log => {
+    // Process proofs with pending status and timer
+    const proofItems: FeedItem[] = proofLogs.map(log => {
       const counts = voteCounts.get(log.id) || { approvals: 0, rejections: 0 };
       const userVote = userVotesMap.get(log.id) || null;
       const isAssignedForValidation = assignedProofIds.has(log.id);
+      const createdAt = new Date(log.timestep);
+      const now = new Date();
+      const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+      
+      // Check if proof has reached consensus (can't vote anymore)
+      const totalVotes = counts.approvals + counts.rejections;
+      const requiredApprovals = log.required_approvals || 0;
+      const totalValidators = log.total_validators || 0;
+      
+      // Proof has reached consensus if:
+      // 1. It has 10+ votes AND approvals >= required (approved)
+      // 2. OR rejections > (total_validators - required) (rejected)
+      // 3. OR validation_status is already set to approved/rejected
+      const hasReachedConsensus = 
+        (totalVotes >= 10 && counts.approvals >= requiredApprovals) ||
+        (totalVotes >= 10 && counts.rejections > (totalValidators - requiredApprovals)) ||
+        log.validation_status === 'approved' ||
+        log.validation_status === 'rejected';
+      
+      // Calculate time remaining first
+      const timeRemaining = 48 - hoursSinceCreation;
+      
+      // A proof is pending (should show at top) if:
+      // 1. Still has time remaining (timeRemaining > 0) - must be less than 48 hours old
+      // 2. Hasn't reached consensus yet (still votable)
+      // If timeRemaining is 0 or negative, it's expired and should NOT be pending
+      const isPending = timeRemaining > 0 && !hasReachedConsensus;
+
+      // Determine validation status
+      // If proof has reached consensus, mark as approved/rejected
+      // If proof is older than 48 hours and hasn't reached consensus, still mark as pending (but won't show at top)
+      let validationStatus: 'pending' | 'approved' | 'rejected' = 'pending';
+      if (hasReachedConsensus) {
+        if (log.validation_status === 'approved' || (totalVotes >= 10 && counts.approvals >= requiredApprovals)) {
+          validationStatus = 'approved';
+        } else if (log.validation_status === 'rejected' || (totalVotes >= 10 && counts.rejections > (totalValidators - requiredApprovals))) {
+          validationStatus = 'rejected';
+        }
+      } else if (timeRemaining <= 0 && totalVotes > 0) {
+        // If expired but has votes, check if we can determine status
+        // For now, keep as pending if no consensus reached
+        validationStatus = 'pending';
+      }
+
+      // Determine if user can vote - allow voting on all pending proofs
+      const canVote = isPending && !hasReachedConsensus;
 
       return {
         id: log.id.toString(),
         userHash: log.user_hash,
         action: log.message,
         timestamp: formatTimestamp(log.timestep),
-        type: log.typeofmessage as 'workout' | 'proof' | 'comment' | 'bet' | 'win' | 'loss' | 'leave',
+        type: log.typeofmessage as 'workout' | 'proof',
         image: log.image,
         approvals: counts.approvals,
         rejections: counts.rejections,
-        userVote: isAssignedForValidation ? (userVote ?? null) : undefined,
+        userVote: userVote ?? null, // User's current vote (null if no vote yet)
+        canVote, // Can vote if pending and no consensus
+        createdAt,
+        isPending,
+        timeRemaining: isPending && timeRemaining > 0 ? timeRemaining : undefined,
+        validationStatus,
       };
     });
+
+    // Process other activity items
+    const otherItems: FeedItem[] = otherLogs.map(log => {
+      return {
+        id: log.id.toString(),
+        userHash: log.user_hash,
+        action: log.message,
+        timestamp: formatTimestamp(log.timestep),
+        type: log.typeofmessage as 'comment' | 'bet' | 'win' | 'loss' | 'leave',
+        createdAt: new Date(log.timestep),
+      };
+    });
+
+    // Sort: pending proofs first (newest first), then other proofs, then other activity
+    const pendingProofs = proofItems.filter(item => item.isPending);
+    const finalizedProofs = proofItems.filter(item => !item.isPending);
+    
+    // Sort pending proofs by newest first (most recent submissions at top)
+    pendingProofs.sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime());
+
+    // Sort finalized proofs by newest first (chronological order)
+    finalizedProofs.sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime());
+    
+    // Sort other activity by newest first
+    otherItems.sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime());
+
+    // Combine: pending proofs at top (newest first), then finalized proofs, then other activity
+    const items = [...pendingProofs, ...finalizedProofs, ...otherItems].slice(0, 50);
 
     // Filter out blocked users
     const currentBlocked = await getBlockedUsers(userHash);
@@ -451,14 +540,28 @@ export default function HomeScreen() {
                   nestedScrollEnabled={true}
                 >
                   {feedItems.map((item) => (
-                    <View key={item.id} style={styles.feedItem}>
+                    <View key={item.id} style={[
+                      styles.feedItem,
+                      item.isPending && styles.feedItemPending,
+                      item.validationStatus === 'approved' && styles.feedItemApproved,
+                      item.validationStatus === 'rejected' && styles.feedItemRejected
+                    ]}>
                       <View style={styles.feedHeader}>
                         <View style={styles.feedUserRow}>
                           <UserAvatar hash={item.userHash} size={32} />
                           <View style={styles.feedUserInfo}>
-                            <Text style={styles.feedUser}>
-                              0x{item.userHash.substring(0, 8)}...
-                            </Text>
+                            <View style={styles.feedUserRowTop}>
+                              <Text style={styles.feedUser}>
+                                0x{item.userHash.substring(0, 8)}...
+                              </Text>
+                              {item.isPending && item.timeRemaining !== undefined && item.timeRemaining > 0 && (
+                                <View style={styles.timerBadge}>
+                                  <Text style={styles.timerText}>
+                                    {Math.floor(item.timeRemaining)}h left
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
                             <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
                           </View>
                         </View>
@@ -475,50 +578,85 @@ export default function HomeScreen() {
                           </TouchableOpacity>
                         )}
                       </View>
-                      <Text style={[
-                        styles.feedAction,
-                        item.type === 'win' && styles.feedActionWin,
-                        item.type === 'loss' && styles.feedActionLoss
-                      ]}>{item.action}</Text>
+                      <View style={styles.feedActionContainer}>
+                        <Text style={[
+                          styles.feedAction,
+                          item.type === 'win' && styles.feedActionWin,
+                          item.type === 'loss' && styles.feedActionLoss
+                        ]}>{item.action}</Text>
+                        {(item.type === 'workout' || item.type === 'proof') && item.validationStatus && item.validationStatus !== 'pending' && (
+                          <View style={[
+                            styles.statusBadge,
+                            item.validationStatus === 'approved' && styles.statusBadgeApproved,
+                            item.validationStatus === 'rejected' && styles.statusBadgeRejected
+                          ]}>
+                            <Text style={[
+                              styles.statusText,
+                              item.validationStatus === 'approved' && styles.statusTextApproved,
+                              item.validationStatus === 'rejected' && styles.statusTextRejected
+                            ]}>
+                              {item.validationStatus === 'approved' ? 'APPROVED' : 'REJECTED'}
+                            </Text>
+                            {item.approvals !== undefined && item.rejections !== undefined && (
+                              <Text style={[
+                                styles.statusPercentage,
+                                item.validationStatus === 'approved' && styles.statusPercentageApproved,
+                                item.validationStatus === 'rejected' && styles.statusPercentageRejected
+                              ]}>
+                                {(() => {
+                                  const total = item.approvals + item.rejections;
+                                  if (total === 0) return '0%';
+                                  const approvalRate = (item.approvals / total) * 100;
+                                  return `${Math.round(approvalRate)}%`;
+                                })()}
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
                       {item.image && (
-                        <Image
-                          source={{ uri: item.image }}
-                          style={styles.feedImage}
-                          resizeMode="cover"
-                        />
-                      )}
-                      {(item.type === 'workout' || item.type === 'proof') && item.userVote !== undefined && (
-                        <View style={styles.voteContainer}>
-                          <TouchableOpacity
-                            style={[
-                              styles.voteButton,
-                              styles.approveButton,
-                              item.userVote === 'approve' && styles.voteButtonActive
-                            ]}
-                            onPress={() => handleVote(item.id, 'approve')}
-                          >
-                            <Text style={[
-                              styles.voteButtonText,
-                              item.userVote === 'approve' && styles.voteButtonTextActive
-                            ]}>
-                              ✓ ACCEPT {item.approvals ? `(${item.approvals})` : ''}
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.voteButton,
-                              styles.rejectButton,
-                              item.userVote === 'reject' && styles.voteButtonActive
-                            ]}
-                            onPress={() => handleVote(item.id, 'reject')}
-                          >
-                            <Text style={[
-                              styles.voteButtonText,
-                              item.userVote === 'reject' && styles.voteButtonTextActive
-                            ]}>
-                              ✕ REJECT {item.rejections ? `(${item.rejections})` : ''}
-                            </Text>
-                          </TouchableOpacity>
+                        <View style={styles.imageContainer}>
+                          <Image
+                            source={{ uri: item.image }}
+                            style={styles.feedImage}
+                            resizeMode="cover"
+                          />
+                          {(item.type === 'workout' || item.type === 'proof') && item.canVote && (
+                            <View style={styles.voteContainerOverlay}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.voteButton,
+                                  styles.approveButton,
+                                  item.userVote === 'approve' && styles.voteButtonActive
+                                ]}
+                                onPress={() => handleVote(item.id, 'approve')}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[
+                                  styles.voteButtonText,
+                                  item.userVote === 'approve' && styles.voteButtonTextActive
+                                ]}>
+                                  ✓ ACCEPT {item.approvals ? `(${item.approvals})` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.voteButton,
+                                  styles.rejectButton,
+                                  item.userVote === 'reject' && styles.voteButtonActive
+                                ]}
+                                onPress={() => handleVote(item.id, 'reject')}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[
+                                  styles.voteButtonText,
+                                  item.userVote === 'reject' && styles.voteButtonTextActive
+                                ]}>
+                                  ✕ REJECT {item.rejections ? `(${item.rejections})` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
                         </View>
                       )}
                     </View>
@@ -728,6 +866,21 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 3,
   },
+  feedItemPending: {
+    borderColor: '#FFD700',
+    backgroundColor: '#FFFEF0',
+    borderWidth: 4,
+  },
+  feedItemApproved: {
+    borderColor: '#4CAF50',
+    backgroundColor: '#F0FFF4',
+    borderWidth: 4,
+  },
+  feedItemRejected: {
+    borderColor: '#F44336',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 4,
+  },
   feedHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -747,6 +900,23 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     flex: 1,
   },
+  feedUserRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timerBadge: {
+    backgroundColor: '#FFD700',
+    borderWidth: 2,
+    borderColor: '#000',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  timerText: {
+    fontSize: 10,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000',
+  },
   feedEmoji: {
     fontSize: 14,
     marginRight: 6,
@@ -764,11 +934,18 @@ const styles = StyleSheet.create({
     color: '#999',
     letterSpacing: 0.3,
   },
+  feedActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   feedAction: {
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
     lineHeight: 18,
+    flex: 1,
   },
   feedActionWin: {
     color: '#00AA00', // Green for wins
@@ -776,12 +953,67 @@ const styles = StyleSheet.create({
   feedActionLoss: {
     color: '#FF0000', // Red for losses
   },
+  statusBadge: {
+    borderWidth: 2,
+    borderColor: '#000',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  statusBadgeApproved: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  statusBadgeRejected: {
+    backgroundColor: '#F44336',
+    borderColor: '#F44336',
+  },
+  statusText: {
+    fontSize: 10,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+  statusTextApproved: {
+    color: '#FFF',
+  },
+  statusTextRejected: {
+    color: '#FFF',
+  },
+  statusPercentage: {
+    fontSize: 8,
+    fontFamily: 'Inter_700Bold',
+    color: '#000',
+    marginTop: 2,
+  },
+  statusPercentageApproved: {
+    color: '#FFF',
+  },
+  statusPercentageRejected: {
+    color: '#FFF',
+  },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+    marginTop: 12,
+    overflow: 'visible',
+  },
   feedImage: {
     width: '100%',
     height: 200,
-    marginTop: 12,
     borderWidth: 2,
     borderColor: '#000',
+  },
+  voteContainerOverlay: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 1000,
+    elevation: 10,
   },
   voteContainer: {
     flexDirection: 'row',
@@ -790,16 +1022,20 @@ const styles = StyleSheet.create({
   },
   voteButton: {
     flex: 1,
-    borderWidth: 2,
+    borderWidth: 4,
     borderColor: '#000',
-    paddingVertical: 10,
+    paddingVertical: 14,
     paddingHorizontal: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
+    shadowOffset: { width: 6, height: 6 },
     shadowOpacity: 1,
     shadowRadius: 0,
-    elevation: 2,
+    elevation: 10,
+    minHeight: 50, // Ensure minimum touch target size for mobile
+    minWidth: 100,
   },
   approveButton: {
     backgroundColor: '#FFF',
@@ -811,10 +1047,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   voteButtonText: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 12,
+    fontFamily: 'Inter_800ExtraBold',
     color: '#000',
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   voteButtonTextActive: {
     color: '#FFF',
