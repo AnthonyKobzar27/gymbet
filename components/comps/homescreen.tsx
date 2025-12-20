@@ -48,6 +48,7 @@ export default function HomeScreen() {
   const [flagBlockModalVisible, setFlagBlockModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [feedMode, setFeedMode] = useState<'proofs' | 'all'>('proofs');
 
   useEffect(() => {
     loadUserData();
@@ -128,7 +129,7 @@ export default function HomeScreen() {
       return;
     }
 
-    const { getActivityFeed } = await import('@/lib/activity_log_utils');
+    const { getActivityFeed, getProofsWithValidators } = await import('@/lib/activity_log_utils');
     const allActivityLogs = await getActivityFeed();
 
     const assignedProofs = await getProofsForValidator(userHash);
@@ -138,9 +139,10 @@ export default function HomeScreen() {
       .filter(log => log.typeofmessage === 'workout' || log.typeofmessage === 'proof')
       .map(log => log.id);
 
-    const [voteCounts, userVotesMap] = await Promise.all([
+    const [voteCounts, userVotesMap, proofsWithValidators] = await Promise.all([
       getVoteCounts(allProofIds),
       getUserVotes(allProofIds, userHash),
+      getProofsWithValidators(allProofIds),
     ]);
 
     // Separate proofs from other activity
@@ -156,6 +158,7 @@ export default function HomeScreen() {
       const counts = voteCounts.get(log.id) || { approvals: 0, rejections: 0 };
       const userVote = userVotesMap.get(log.id) || null;
       const isAssignedForValidation = assignedProofIds.has(log.id);
+      const hasValidatorsAssigned = proofsWithValidators.has(log.id);
       const createdAt = new Date(log.timestep);
       const now = new Date();
       const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
@@ -165,43 +168,81 @@ export default function HomeScreen() {
       const requiredApprovals = log.required_approvals || 0;
       const totalValidators = log.total_validators || 0;
       
-      // Proof has reached consensus if:
-      // 1. It has 10+ votes AND approvals >= required (approved)
-      // 2. OR rejections > (total_validators - required) (rejected)
-      // 3. OR validation_status is already set to approved/rejected
-      const hasReachedConsensus = 
-        (totalVotes >= 10 && counts.approvals >= requiredApprovals) ||
-        (totalVotes >= 10 && counts.rejections > (totalValidators - requiredApprovals)) ||
-        log.validation_status === 'approved' ||
-        log.validation_status === 'rejected';
+      // If proof has validators assigned, use PBFT consensus
+      // If proof has NO validators assigned (legacy), use simple majority with 10+ votes
+      let hasReachedConsensus = false;
+      
+      const MIN_VOTES_FOR_DECISION = 10;
+      
+      // CRITICAL: Proofs need at least 10 votes to reach consensus - if < 10 votes, stay PENDING
+      if (totalVotes < MIN_VOTES_FOR_DECISION) {
+        hasReachedConsensus = false; // Stay pending, allow voting
+      } else if (hasValidatorsAssigned && totalValidators > 0) {
+        // PBFT consensus: requires 2/3 majority (only if >= 10 votes)
+        hasReachedConsensus = 
+          (counts.approvals >= requiredApprovals) ||
+          (counts.rejections > (totalValidators - requiredApprovals)) ||
+          log.validation_status === 'approved' ||
+          log.validation_status === 'rejected';
+      } else {
+        // Legacy consensus: simple majority with 10+ votes
+        // Approve if approvals > rejections AND total votes >= 10
+        // Reject if rejections > approvals AND total votes >= 10
+        const approvalMajority = counts.approvals > counts.rejections;
+        const rejectionMajority = counts.rejections > counts.approvals;
+        hasReachedConsensus = 
+          approvalMajority ||
+          rejectionMajority ||
+          log.validation_status === 'approved' ||
+          log.validation_status === 'rejected';
+      }
       
       // Calculate time remaining first
       const timeRemaining = 48 - hoursSinceCreation;
       
-      // A proof is pending (should show at top) if:
-      // 1. Still has time remaining (timeRemaining > 0) - must be less than 48 hours old
-      // 2. Hasn't reached consensus yet (still votable)
-      // If timeRemaining is 0 or negative, it's expired and should NOT be pending
-      const isPending = timeRemaining > 0 && !hasReachedConsensus;
-
-      // Determine validation status
+      // Determine validation status FIRST
       // If proof has reached consensus, mark as approved/rejected
       // If proof is older than 48 hours and hasn't reached consensus, still mark as pending (but won't show at top)
       let validationStatus: 'pending' | 'approved' | 'rejected' = 'pending';
-      if (hasReachedConsensus) {
-        if (log.validation_status === 'approved' || (totalVotes >= 10 && counts.approvals >= requiredApprovals)) {
-          validationStatus = 'approved';
-        } else if (log.validation_status === 'rejected' || (totalVotes >= 10 && counts.rejections > (totalValidators - requiredApprovals))) {
-          validationStatus = 'rejected';
+      
+      // CRITICAL: Check database status first - if already approved/rejected, use that
+      if (log.validation_status === 'approved' || log.validation_status === 'rejected') {
+        validationStatus = log.validation_status;
+      } else if (totalVotes < MIN_VOTES_FOR_DECISION) {
+        // CRITICAL: If < 10 votes, always stay PENDING (allow voting)
+        validationStatus = 'pending';
+      } else if (hasReachedConsensus) {
+        if (hasValidatorsAssigned && totalValidators > 0) {
+          // PBFT consensus (only reached if >= 10 votes)
+          if (counts.approvals >= requiredApprovals) {
+            validationStatus = 'approved';
+          } else if (counts.rejections > (totalValidators - requiredApprovals)) {
+            validationStatus = 'rejected';
+          }
+        } else {
+          // Legacy consensus: simple majority (only reached if >= 10 votes)
+          if (counts.approvals > counts.rejections) {
+            validationStatus = 'approved';
+          } else if (counts.rejections > counts.approvals) {
+            validationStatus = 'rejected';
+          }
         }
-      } else if (timeRemaining <= 0 && totalVotes > 0) {
-        // If expired but has votes, check if we can determine status
-        // For now, keep as pending if no consensus reached
+      } else {
+        // No consensus reached, stay pending
         validationStatus = 'pending';
       }
+      
+      // A proof is pending (yellow background, timer) ONLY if validationStatus is 'pending'
+      // Approved/rejected proofs should NOT show yellow background or be votable
+      const isPending = validationStatus === 'pending';
 
-      // Determine if user can vote - allow voting on all pending proofs
-      const canVote = isPending && !hasReachedConsensus;
+      // Determine if user can vote:
+      // CRITICAL: Only allow voting if proof is actually pending (not approved/rejected)
+      // - If proof has validators assigned: user must be assigned AND proof must be pending
+      // - If proof has NO validators assigned (legacy): allow anyone to vote if pending (fallback)
+      const canVote = validationStatus === 'pending' && (
+        hasValidatorsAssigned ? isAssignedForValidation : true
+      );
 
       return {
         id: log.id.toString(),
@@ -216,7 +257,7 @@ export default function HomeScreen() {
         canVote, // Can vote if pending and no consensus
         createdAt,
         isPending,
-        timeRemaining: isPending && timeRemaining > 0 ? timeRemaining : undefined,
+        timeRemaining: isPending ? timeRemaining : undefined, // Always show timeRemaining if pending (even if negative)
         validationStatus,
       };
     });
@@ -417,6 +458,9 @@ export default function HomeScreen() {
 
       const validation = await checkPBFTValidation(activityIdNum);
 
+      // Reload feed to get updated status from database
+      await loadFeed();
+
       if (validation.status === 'approved') {
         triggerHaptic('success');
         Alert.alert('Proof Approved!', 'This proof has been validated by 2/3 majority (PBFT consensus)');
@@ -528,24 +572,62 @@ export default function HomeScreen() {
           {/* Feed Section */}
           <View style={styles.arcadeCard}>
             <View style={styles.cardInner}>
-              <Text style={styles.cardTitle}>ACTIVITY FEED</Text>
+              <View style={styles.feedHeaderRow}>
+                <Text style={styles.cardTitle}>ACTIVITY FEED</Text>
+                <View style={styles.toggleContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.toggleButton,
+                      feedMode === 'proofs' && styles.toggleButtonActive
+                    ]}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      setFeedMode('proofs');
+                    }}
+                  >
+                    <Text style={[
+                      styles.toggleButtonText,
+                      feedMode === 'proofs' && styles.toggleButtonTextActive
+                    ]}>
+                      PROOFS
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.toggleButton,
+                      feedMode === 'all' && styles.toggleButtonActive
+                    ]}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      setFeedMode('all');
+                    }}
+                  >
+                    <Text style={[
+                      styles.toggleButtonText,
+                      feedMode === 'all' && styles.toggleButtonTextActive
+                    ]}>
+                      ALL
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
               <View style={styles.spacer} />
 
-              {feedItems.length === 0 ? (
+              {(() => {
+                const filteredItems = feedMode === 'proofs' 
+                  ? feedItems.filter(item => item.type === 'workout' || item.type === 'proof')
+                  : feedItems;
+                
+                return filteredItems.length === 0 ? (
                 <Text style={styles.feedAction}>No activity yet. Be the first to join a game!</Text>
-              ) : (
-                <ScrollView
-                  style={styles.feedScrollView}
-                  showsVerticalScrollIndicator={true}
-                  nestedScrollEnabled={true}
-                >
-                  {feedItems.map((item) => (
-                    <View key={item.id} style={[
-                      styles.feedItem,
-                      item.isPending && styles.feedItemPending,
-                      item.validationStatus === 'approved' && styles.feedItemApproved,
-                      item.validationStatus === 'rejected' && styles.feedItemRejected
-                    ]}>
+                ) : (
+                  <ScrollView
+                    style={styles.feedScrollView}
+                    showsVerticalScrollIndicator={true}
+                    nestedScrollEnabled={true}
+                  >
+                    {filteredItems.map((item) => (
+                    <View key={item.id} style={styles.feedItem}>
                       <View style={styles.feedHeader}>
                         <View style={styles.feedUserRow}>
                           <UserAvatar hash={item.userHash} size={32} />
@@ -554,10 +636,10 @@ export default function HomeScreen() {
                               <Text style={styles.feedUser}>
                                 0x{item.userHash.substring(0, 8)}...
                               </Text>
-                              {item.isPending && item.timeRemaining !== undefined && item.timeRemaining > 0 && (
+                              {item.isPending && item.timeRemaining !== undefined && (
                                 <View style={styles.timerBadge}>
                                   <Text style={styles.timerText}>
-                                    {Math.floor(item.timeRemaining)}h left
+                                    {Math.max(0, Math.floor(item.timeRemaining))}h left
                                   </Text>
                                 </View>
                               )}
@@ -583,7 +665,29 @@ export default function HomeScreen() {
                           styles.feedAction,
                           item.type === 'win' && styles.feedActionWin,
                           item.type === 'loss' && styles.feedActionLoss
-                        ]}>{item.action}</Text>
+                        ]}>
+                          {(() => {
+                            // Add emoji prefix for proofs based on validation status
+                            if (item.type === 'workout' || item.type === 'proof') {
+                              let emoji = '';
+                              let statusText = '';
+                              
+                              if (item.validationStatus === 'approved') {
+                                emoji = '✓';
+                                statusText = 'APPROVED: ';
+                              } else if (item.validationStatus === 'rejected') {
+                                emoji = '✗';
+                                statusText = 'REJECTED: ';
+                              } else if (item.isPending || item.validationStatus === 'pending') {
+                                emoji = '-';
+                                statusText = 'PENDING: ';
+                              }
+                              
+                              return emoji ? `${emoji} ${statusText}${item.action}` : item.action;
+                            }
+                            return item.action;
+                          })()}
+                        </Text>
                         {(item.type === 'workout' || item.type === 'proof') && item.validationStatus && item.validationStatus !== 'pending' && (
                           <View style={[
                             styles.statusBadge,
@@ -615,14 +719,9 @@ export default function HomeScreen() {
                         )}
                       </View>
                       {item.image && (
-                        <View style={styles.imageContainer}>
-                          <Image
-                            source={{ uri: item.image }}
-                            style={styles.feedImage}
-                            resizeMode="cover"
-                          />
+                        <>
                           {(item.type === 'workout' || item.type === 'proof') && item.canVote && (
-                            <View style={styles.voteContainerOverlay}>
+                            <View style={styles.voteContainer}>
                               <TouchableOpacity
                                 style={[
                                   styles.voteButton,
@@ -657,12 +756,20 @@ export default function HomeScreen() {
                               </TouchableOpacity>
                             </View>
                           )}
-                        </View>
+                          <View style={styles.imageContainer}>
+                            <Image
+                              source={{ uri: item.image }}
+                              style={styles.feedImage}
+                              resizeMode="cover"
+                            />
+                          </View>
+                        </>
                       )}
                     </View>
-                  ))}
-                </ScrollView>
-              )}
+                    ))}
+                  </ScrollView>
+                );
+              })()}
 
               <TouchableOpacity 
                 style={styles.viewMoreButton} 
@@ -785,6 +892,44 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 0.5,
+    flex: 1,
+    flexShrink: 1,
+  },
+  feedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    width: '100%',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    borderWidth: 2,
+    borderColor: '#000',
+    backgroundColor: '#FFF',
+    padding: 1.5,
+    gap: 0,
+    flexShrink: 0,
+  },
+  toggleButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 55,
+  },
+  toggleButtonActive: {
+    backgroundColor: '#000',
+  },
+  toggleButtonText: {
+    fontSize: 9,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 0.3,
+    color: '#000',
+  },
+  toggleButtonTextActive: {
+    color: '#FFF',
   },
   spacer: {
     height: 16,
@@ -906,7 +1051,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   timerBadge: {
-    backgroundColor: '#FFD700',
+    backgroundColor: '#FFF',
     borderWidth: 2,
     borderColor: '#000',
     paddingHorizontal: 8,
@@ -1077,7 +1222,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 10,
-    paddingTop: 50,
   },
   buttonPrimary: {
     backgroundColor: '#000',

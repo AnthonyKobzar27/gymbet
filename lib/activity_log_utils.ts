@@ -363,8 +363,10 @@ export async function checkPBFTValidation(activityLogId: number): Promise<{
 
   const MIN_VOTES_FOR_DECISION = 10;
 
+  // CRITICAL: Match frontend logic - proofs need at least 10 votes to reach consensus
+  // If < 10 votes, stay PENDING (do NOT auto-approve)
   if (totalVotes < MIN_VOTES_FOR_DECISION) {
-    newStatus = 'approved';
+    newStatus = 'pending'; // Stay pending if < 10 votes (matches frontend)
   } else if (approvals >= required) {
     newStatus = 'approved';
   } else if (rejections > (activityLog.total_validators || 0) - required) {
@@ -374,10 +376,17 @@ export async function checkPBFTValidation(activityLogId: number): Promise<{
   }
 
   if (newStatus !== activityLog.validation_status) {
-    await supabase
+    const { error: updateError } = await supabase
       .from('activity_log')
       .update({ validation_status: newStatus })
       .eq('id', activityLogId);
+
+    if (updateError) {
+      console.error(`❌ Failed to update proof ${activityLogId} status from '${activityLog.validation_status}' to '${newStatus}':`, updateError);
+      return { ok: false, status: activityLog.validation_status || 'pending', approvals, rejections, required };
+    }
+
+    console.log(`✅ Successfully updated proof ${activityLogId} status from '${activityLog.validation_status}' to '${newStatus}' (${approvals} approvals, ${rejections} rejections, required: ${required})`);
 
     await supabase
       .from('proof_distribution')
@@ -474,4 +483,26 @@ export async function checkPBFTValidation(activityLogId: number): Promise<{
     rejections,
     required,
   };
+}
+
+export async function getProofsWithValidators(proofIds: number[]): Promise<Set<number>> {
+  if (proofIds.length === 0) {
+    return new Set();
+  }
+
+  const { data, error } = await supabase
+    .from('proof_distribution')
+    .select('activity_log_id')
+    .in('activity_log_id', proofIds);
+
+  if (error) {
+    console.error('Failed to get proofs with validators:', error);
+    return new Set();
+  }
+
+  if (!data || data.length === 0) {
+    return new Set();
+  }
+
+  return new Set(data.map(d => d.activity_log_id));
 }

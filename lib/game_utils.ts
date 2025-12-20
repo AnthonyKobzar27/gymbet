@@ -690,10 +690,12 @@ export async function submitWakeupProof(
       );
 
       if (distributionResult.ok) {
+        console.log(`✅ Successfully distributed proof ${activityResult.id} to ${validators.length} validators`);
       } else {
         console.error('⚠️ Failed to distribute proof:', distributionResult.error);
       }
     } else {
+      console.error('⚠️ CRITICAL: No validators found! Proof will not be distributed. Check if profiles exist in database.');
     }
   }
 
