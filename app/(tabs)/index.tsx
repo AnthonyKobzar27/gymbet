@@ -109,7 +109,7 @@ export default function HomeScreen() {
       style={styles.background}
       imageStyle={{ resizeMode: "cover" }}
     >
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
         {!user ? (
           <View style={styles.loginPromptContainer}>
             <View style={styles.loginPrompt}>
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fdcff3',
+    backgroundColor: 'transparent',
   },
   loadingText: {
     marginTop: 16,

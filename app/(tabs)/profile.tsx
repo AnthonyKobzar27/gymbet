@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ImageBackground,
+  Image,
   Dimensions,
   Alert,
   ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
@@ -20,6 +21,7 @@ import PaymentModal from '@/components/modals/PaymentModal';
 import BlockedUsersModal from '@/components/modals/BlockedUsersModal';
 import SettingsModal from '@/components/modals/SettingsModal';
 import TermsModal from '@/components/modals/TermsModal';
+import HowToPlayModal from '@/components/modals/HowToPlayModal';
 import { getStats } from '@/lib/homepage_utils';
 import { getBalance } from '@/lib/transaction_utils';
 import { getUserGames, getUserActiveGame, getGameDetails, GameWithPlayers } from '@/lib/game_utils';
@@ -35,6 +37,8 @@ export default function ProfileScreen() {
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [blockedUsersModalVisible, setBlockedUsersModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
+  const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
+  const [headerUserProfile, setHeaderUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
 
   const [balance, setBalance] = useState(0);
   const [totalProfit, setTotalProfit] = useState(0);
@@ -48,14 +52,27 @@ export default function ProfileScreen() {
       if (user) {
         const profile = await getUserProfile();
         setUserProfile(profile);
+        setHeaderUserProfile(profile);
         if (profile?.hash) {
           await loadUserMetrics(profile.hash);
         }
+      } else {
+        setHeaderUserProfile(null);
       }
     };
 
     fetchUserProfile();
   }, [user]);
+
+  const handleProfilePress = () => {
+    triggerHaptic('light');
+    // Already on profile page, do nothing or scroll to top
+  };
+
+  const handleHowToPlayPress = () => {
+    triggerHaptic('medium');
+    setHowToPlayModalVisible(true);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -222,13 +239,41 @@ export default function ProfileScreen() {
         style={styles.background}
         imageStyle={{ resizeMode: "cover" }}
       >
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
           <ScrollView
             style={styles.scrollContent}
             contentContainerStyle={styles.scrollContentContainer}
             showsVerticalScrollIndicator={true}
           >
             <View style={styles.content}>
+                {/* Scrollable Header */}
+                <View style={styles.scrollableHeader}>
+                  <Text style={styles.headerTitle}>PROFILE</Text>
+                  <View style={styles.headerRightContainer}>
+                    <TouchableOpacity
+                      style={styles.headerHowToPlayButton}
+                      onPress={handleHowToPlayPress}
+                    >
+                      <Text style={styles.headerHowToPlayText}>
+                        How to Play
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.headerProfileBubble}
+                      onPress={handleProfilePress}
+                    >
+                      {user && headerUserProfile?.hash ? (
+                        <UserAvatar hash={headerUserProfile.hash} size={36} />
+                      ) : (
+                        <Image 
+                          source={require('@/assets/images/noprofile.png')} 
+                          style={{ width: 40, height: 40, borderRadius: 18 }}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
                 {/* Profile Header */}
                 <View style={styles.profileHeader}>
@@ -345,6 +390,10 @@ export default function ProfileScreen() {
             visible={termsModalVisible}
             onClose={() => setTermsModalVisible(false)}
           />
+          <HowToPlayModal
+            visible={howToPlayModalVisible}
+            onClose={() => setHowToPlayModalVisible(false)}
+          />
         </>
       )}
     </>
@@ -365,12 +414,67 @@ const styles = StyleSheet.create({
   },
   scrollContentContainer: {
     padding: 10,
-    paddingTop: 100,
     paddingBottom: 20,
   },
   content: {
     padding: 20,
     paddingBottom: 130,
+  },
+  scrollableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: 'transparent',
+    marginBottom: 30,
+    marginHorizontal: -20,
+    marginTop: 10,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerHowToPlayButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  headerHowToPlayText: {
+    color: '#000000',
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  headerProfileBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   loadingContainer: {
     flex: 1,

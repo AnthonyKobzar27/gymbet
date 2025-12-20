@@ -111,29 +111,14 @@ export default function TabLayout() {
           borderTopColor: '#000000',
           overflow: 'hidden',
         },
-        headerStyle: {
-          backgroundColor: '#fdcff3',
-        },
-        headerTransparent: true,
-        headerTitleAlign: "left",
-        headerTitleStyle: {
-          fontSize: 26,
-          overflow: 'hidden',
-          fontFamily: 'Inter_800ExtraBold',
-          color: '#000000',
-          marginLeft: 15,
-        },
-        headerTintColor: '#000000',
-        headerRight: () => <HeaderRight />,
-        headerRightContainerStyle: {
-          paddingRight: 20,
-        },
+        headerShown: false,
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'HOME',
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={"white"} />,
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -141,6 +126,7 @@ export default function TabLayout() {
         options={{
           title: 'GAMES',
           tabBarIcon: ({ color }) => <TabBarIcon name="trophy" color={"white"} />,
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -148,6 +134,7 @@ export default function TabLayout() {
         options={{
           title: 'PROFILE',
           tabBarIcon: ({ color }) => <TabBarIcon name="user" color={"white"} />,
+          headerShown: false,
         }}
       />
     </Tabs>

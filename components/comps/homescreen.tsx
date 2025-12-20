@@ -14,6 +14,7 @@ import { UserAvatar } from '@/components/Avatar';
 import { triggerHaptic } from '@/lib/haptics';
 import FlagBlockModal from '@/components/modals/FlagBlockModal';
 import { flagPost, blockUser, getBlockedUsers } from '@/lib/flagging_utils';
+import HowToPlayModal from '@/components/modals/HowToPlayModal';
 
 interface FeedItem {
   id: string;
@@ -33,7 +34,7 @@ interface FeedItem {
 }
 
 export default function HomeScreen() {
-  const { getUserProfile } = useAuth();
+  const { user, getUserProfile } = useAuth();
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [profitMade, setProfitMade] = useState(0);
   const [workoutData, setWorkoutData] = useState([0]);
@@ -49,11 +50,18 @@ export default function HomeScreen() {
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
   const [feedMode, setFeedMode] = useState<'proofs' | 'all'>('proofs');
+  const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
 
   useEffect(() => {
     loadUserData();
     loadFeed();
     loadBlockedUsers();
+    if (user) {
+      loadUserProfile();
+    } else {
+      setUserProfile(null);
+    }
 
     const unsubscribe = subscribeToActivityFeed((newLog) => {
       const newItem: FeedItem = {
@@ -70,7 +78,24 @@ export default function HomeScreen() {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [user]);
+
+  const loadUserProfile = async () => {
+    if (user) {
+      const profile = await getUserProfile();
+      setUserProfile(profile);
+    }
+  };
+
+  const handleProfilePress = () => {
+    triggerHaptic('light');
+    router.push('/profile');
+  };
+
+  const handleHowToPlayPress = () => {
+    triggerHaptic('medium');
+    setHowToPlayModalVisible(true);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -515,13 +540,41 @@ export default function HomeScreen() {
       style={styles.background}
       imageStyle={{resizeMode: "cover"}}
     >
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
       <View style={styles.scrollWrapper}>
       <ScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={true}
       >
         <View style={styles.content}>
+          {/* Scrollable Header */}
+          <View style={styles.scrollableHeader}>
+            <Text style={styles.headerTitle}>HOME</Text>
+            <View style={styles.headerRightContainer}>
+              <TouchableOpacity
+                style={styles.headerHowToPlayButton}
+                onPress={handleHowToPlayPress}
+              >
+                <Text style={styles.headerHowToPlayText}>
+                  How to Play
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.headerProfileBubble, !user && styles.headerProfileBubbleGuest]}
+                onPress={handleProfilePress}
+              >
+                {user && userProfile?.hash ? (
+                  <UserAvatar hash={userProfile.hash} size={36} />
+                ) : (
+                  <Image 
+                    source={require('@/assets/images/noprofile.png')} 
+                    style={{ width: 40, height: 40, borderRadius: 18 }}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {/* Training Split Tracker */}
           <View style={styles.arcadeCard}>
@@ -812,6 +865,12 @@ export default function HomeScreen() {
       />
     )}
 
+    {/* How to Play Modal */}
+    <HowToPlayModal
+      visible={howToPlayModalVisible}
+      onClose={() => setHowToPlayModalVisible(false)}
+    />
+
     {/* Workout Split Log Modal */}
     <Modal
       animationType="fade"
@@ -862,6 +921,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%', 
     height: '100%',
+    margin: 0,
+    padding: 0,
   },
   scrollWrapper: {
     flex: 1,
@@ -871,8 +932,68 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
     paddingBottom: 50,
+  },
+  scrollableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: 'transparent',
+    marginBottom: 16,
+    marginHorizontal: -20,
+    marginTop: 30,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerHowToPlayButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  headerHowToPlayText: {
+    color: '#000000',
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  headerProfileBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  headerProfileBubbleGuest: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#999999',
   },
   arcadeCard: {
     borderWidth: 4,

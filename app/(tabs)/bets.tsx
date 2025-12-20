@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, TouchableOpacity, Text, Image } from 'react-native';
 import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import LoginModal from '@/components/modals/LoginModal';
 import ProofSubmissionModal from '@/components/modals/ProofSubmissionModal';
 import CreateGameModal from '@/components/bets/CreateGameModal';
 import ActiveGameView from '@/components/bets/ActiveGameView';
 import JoinableGamesView from '@/components/bets/JoinableGamesView';
+import HowToPlayModal from '@/components/modals/HowToPlayModal';
+import { UserAvatar } from '@/components/Avatar';
 import { triggerHaptic } from '@/lib/haptics';
 import {
   getJoinableGames,
@@ -39,10 +41,34 @@ export default function BetsScreen() {
   const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
 
   useEffect(() => {
     loadUserHash();
+    if (user) {
+      loadUserProfile();
+    } else {
+      setUserProfile(null);
+    }
   }, [user]);
+
+  const loadUserProfile = async () => {
+    if (user) {
+      const profile = await getUserProfile();
+      setUserProfile(profile);
+    }
+  };
+
+  const handleProfilePress = () => {
+    triggerHaptic('light');
+    router.push('/profile');
+  };
+
+  const handleHowToPlayPress = () => {
+    triggerHaptic('medium');
+    setHowToPlayModalVisible(true);
+  };
 
   useEffect(() => {
     if (userHash) {
@@ -226,13 +252,42 @@ export default function BetsScreen() {
           }}
         />
       ) : (
-        <SafeAreaView style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
           <View style={styles.scrollWrapper}>
             <ScrollView
               style={styles.scrollContent}
               showsVerticalScrollIndicator={true}
             >
               <View style={styles.content}>
+                {/* Scrollable Header */}
+                <View style={styles.scrollableHeader}>
+                  <Text style={styles.headerTitle}>GAMES</Text>
+                  <View style={styles.headerRightContainer}>
+                    <TouchableOpacity
+                      style={styles.headerHowToPlayButton}
+                      onPress={handleHowToPlayPress}
+                    >
+                      <Text style={styles.headerHowToPlayText}>
+                        How to Play
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.headerProfileBubble, !user && styles.headerProfileBubbleGuest]}
+                      onPress={handleProfilePress}
+                    >
+                      {user && userProfile?.hash ? (
+                        <UserAvatar hash={userProfile.hash} size={36} />
+                      ) : (
+                        <Image 
+                          source={require('@/assets/images/noprofile.png')} 
+                          style={{ width: 40, height: 40, borderRadius: 18 }}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
                 {activeGame ? (
                   <ActiveGameView
                     activeGame={activeGame}
@@ -287,6 +342,12 @@ export default function BetsScreen() {
           splitType={activeGame.split_type}
         />
       )}
+
+      {/* How to Play Modal */}
+      <HowToPlayModal
+        visible={howToPlayModalVisible}
+        onClose={() => setHowToPlayModalVisible(false)}
+      />
     </ImageBackground>
   );
 }
@@ -303,10 +364,69 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: 10,
-    paddingTop: 50,
   },
   content: {
     padding: 20,
     paddingBottom: 100,
+  },
+  scrollableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    backgroundColor: 'transparent',
+    marginBottom: 16,
+    marginHorizontal: -20,
+    marginTop: 10,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#000000',
+  },
+  headerRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerHowToPlayButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  headerHowToPlayText: {
+    color: '#000000',
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  headerProfileBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  headerProfileBubbleGuest: {
+    backgroundColor: '#E0E0E0',
+    borderColor: '#999999',
   },
 });
