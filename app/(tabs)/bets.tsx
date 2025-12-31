@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, Alert, TouchableOpacity, Text, Image } from 'react-native';
-import { ImageBackground } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, TouchableOpacity, Text, Image, ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
 import { useFocusEffect, router } from 'expo-router';
+import { useRoute } from '@react-navigation/native';
+import { useAuth } from '@/contexts/AuthContext';
+import SwipeableTabScreen from '@/components/SwipeableTabScreen';
 import LoginModal from '@/components/modals/LoginModal';
 import ProofSubmissionModal from '@/components/modals/ProofSubmissionModal';
 import CreateGameModal from '@/components/bets/CreateGameModal';
 import ActiveGameView from '@/components/bets/ActiveGameView';
 import JoinableGamesView from '@/components/bets/JoinableGamesView';
 import HowToPlayModal from '@/components/modals/HowToPlayModal';
+import GuestView from '@/components/common/GuestView';
 import { UserAvatar } from '@/components/Avatar';
 import { triggerHaptic } from '@/lib/haptics';
 import {
@@ -25,12 +27,12 @@ import {
   GameWithPlayers,
 } from '@/lib/game_utils';
 import { setupGameNotifications, clearGameNotifications } from '@/lib/notification_utils';
-import GuestView from '@/components/common/GuestView';
 
 type TabType = 'players' | 'log';
 
 export default function BetsScreen() {
   const { user, getUserProfile } = useAuth();
+  const route = useRoute();
   const [loginModalVisible, setLoginModalVisible] = useState(false);
   const [userHash, setUserHash] = useState<string | null>(null);
   const [activeGame, setActiveGame] = useState<GameWithPlayers | null>(null);
@@ -42,7 +44,7 @@ export default function BetsScreen() {
   const [chatMessage, setChatMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
   const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string; balance: number } | null>(null);
 
   useEffect(() => {
     loadUserHash();
@@ -105,7 +107,6 @@ export default function BetsScreen() {
       const userSubmission = submissions.find(s => s.user_hash === userHash);
       setHasSubmittedToday(!!userSubmission);
     } else {
-      // If user is not in a game, only show free games (stake = 0)
       const joinable = await getJoinableGames(true);
       setJoinableGames(joinable);
       setActiveGame(null);
@@ -132,11 +133,7 @@ export default function BetsScreen() {
     if (result.ok) {
       triggerHaptic('success');
       await setupGameNotifications();
-
-      Alert.alert(
-        'Success!',
-        'Successfully joined the game!'
-      );
+      Alert.alert('Success!', 'Successfully joined the game!');
       loadGames();
     } else {
       triggerHaptic('error');
@@ -175,6 +172,37 @@ export default function BetsScreen() {
     );
   };
 
+  const handleJoinRandomGame = async () => {
+    if (!userHash) {
+      triggerHaptic('error');
+      Alert.alert('Error', 'Please log in first');
+      return;
+    }
+
+    triggerHaptic('medium');
+    
+    const games = await getJoinableGames(true);
+
+    if (games.length === 0) {
+      triggerHaptic('warning');
+      Alert.alert('No Games Available', 'There are no free games to join right now!');
+      return;
+    }
+
+    const randomGame = games[0];
+    const result = await joinGame(randomGame.id, userHash);
+
+    if (result.ok) {
+      triggerHaptic('success');
+      await setupGameNotifications();
+      Alert.alert('Success!', 'Joined free game!');
+      loadGames();
+    } else {
+      triggerHaptic('error');
+      Alert.alert('Error', result.error?.message || 'Failed to join game');
+    }
+  };
+
   const handleProofSubmit = async (photoUri: string, caption: string) => {
     if (!activeGame || !userHash) return;
 
@@ -191,9 +219,7 @@ export default function BetsScreen() {
       triggerHaptic(result.isOnTime ? 'success' : 'warning');
       Alert.alert(
         'Success!',
-        result.isOnTime
-          ? 'Your workout proof was submitted on time!'
-          : 'Proof submitted LATE!'
+        result.isOnTime ? 'Your workout proof was submitted on time!' : 'Proof submitted LATE!'
       );
       loadGames();
     } else {
@@ -209,7 +235,6 @@ export default function BetsScreen() {
     setSendingMessage(true);
     try {
       const result = await sendChatMessage(activeGame.id, userHash, chatMessage);
-
       if (result.ok) {
         setChatMessage('');
         loadGames();
@@ -217,7 +242,7 @@ export default function BetsScreen() {
         triggerHaptic('error');
         Alert.alert('Error', 'Failed to send message');
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to send message');
     } finally {
       setSendingMessage(false);
@@ -237,118 +262,112 @@ export default function BetsScreen() {
   };
 
   return (
-    <ImageBackground
-      source={require('../../assets/images/AppBackground.jpg')}
-      style={styles.background}
-      imageStyle={{resizeMode: "cover"}}
-    >
-      {!user ? (
-        <GuestView
-          title="Bets"
-          subtitle="Please login to view and join games"
-          onLoginPress={() => {
-            triggerHaptic('medium');
-            setLoginModalVisible(true);
-          }}
-        />
-      ) : (
-        <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
-          <View style={styles.scrollWrapper}>
-            <ScrollView
-              style={styles.scrollContent}
-              showsVerticalScrollIndicator={true}
-            >
-              <View style={styles.content}>
-                {/* Scrollable Header */}
-                <View style={styles.scrollableHeader}>
-                  <Text style={styles.headerTitle}>GAMES</Text>
-                  <View style={styles.headerRightContainer}>
-                    <TouchableOpacity
-                      style={styles.headerHowToPlayButton}
-                      onPress={handleHowToPlayPress}
-                    >
-                      <Text style={styles.headerHowToPlayText}>
-                        How to Play
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.headerProfileBubble, !user && styles.headerProfileBubbleGuest]}
-                      onPress={handleProfilePress}
-                    >
-                      {user && userProfile?.hash ? (
-                        <UserAvatar hash={userProfile.hash} size={36} />
-                      ) : (
-                        <Image 
-                          source={require('@/assets/images/noprofile.png')} 
-                          style={{ width: 40, height: 40, borderRadius: 18 }}
-                        />
-                      )}
-                    </TouchableOpacity>
+    <SwipeableTabScreen currentTab={route.name}>
+      <ImageBackground 
+        source={require('@/assets/images/AppBackground.jpg')} 
+        style={styles.background}
+        resizeMode="cover"
+      >
+        {!user ? (
+          <GuestView
+            title="Bets"
+            subtitle="Please login to view and join games"
+            onLoginPress={() => {
+              triggerHaptic('medium');
+              setLoginModalVisible(true);
+            }}
+          />
+        ) : (
+          <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+            <View style={styles.scrollWrapper}>
+              <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator>
+                <View style={styles.content}>
+                  <View style={styles.scrollableHeader}>
+                    <Text style={styles.headerTitle}>GAMES</Text>
+                    <View style={styles.headerRightContainer}>
+                      <TouchableOpacity style={styles.headerHowToPlayButton} onPress={handleHowToPlayPress}>
+                        <Text style={styles.headerHowToPlayText}>How to Play</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.headerProfileBubble, !user && styles.headerProfileBubbleGuest]}
+                        onPress={handleProfilePress}
+                      >
+                        {user && userProfile?.hash ? (
+                          <UserAvatar hash={userProfile.hash} size={36} />
+                        ) : (
+                          <Image source={require('@/assets/images/noprofile.png')} style={styles.profileImage} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
+
+                  {activeGame ? (
+                    <ActiveGameView
+                      activeGame={activeGame}
+                      selectedTab={selectedTab}
+                      onTabChange={setSelectedTab}
+                      hasSubmittedToday={hasSubmittedToday}
+                      onSubmitProof={() => {
+                        triggerHaptic('medium');
+                        setProofModalVisible(true);
+                      }}
+                      onLeaveGame={handleLeaveGame}
+                      chatMessage={chatMessage}
+                      onChatMessageChange={setChatMessage}
+                      onSendMessage={handleSendMessage}
+                      sendingMessage={sendingMessage}
+                      formatDate={formatDate}
+                    />
+                  ) : (
+                    <>
+                      <JoinableGamesView
+                        joinableGames={joinableGames}
+                        onJoinGame={handleJoinGame}
+                        onCreateGame={() => {
+                          triggerHaptic('medium');
+                          setCreateModalVisible(true);
+                        }}
+                        formatDate={formatDate}
+                      />
+                      
+                      <TouchableOpacity
+                        style={styles.buttonSecondary}
+                        onPress={handleJoinRandomGame}
+                      >
+                        <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        style={styles.buttonPrimary}
+                        onPress={() => {
+                          triggerHaptic('medium');
+                          setCreateModalVisible(true);
+                        }}
+                      >
+                        <Text style={styles.buttonPrimaryText}>CREATE GAME</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
+              </ScrollView>
+            </View>
+          </SafeAreaView>
+        )}
 
-                {activeGame ? (
-                  <ActiveGameView
-                    activeGame={activeGame}
-                    selectedTab={selectedTab}
-                    onTabChange={setSelectedTab}
-                    hasSubmittedToday={hasSubmittedToday}
-                    onSubmitProof={() => {
-                      triggerHaptic('medium');
-                      setProofModalVisible(true);
-                    }}
-                    onLeaveGame={handleLeaveGame}
-                    chatMessage={chatMessage}
-                    onChatMessageChange={setChatMessage}
-                    onSendMessage={handleSendMessage}
-                    sendingMessage={sendingMessage}
-                    formatDate={formatDate}
-                  />
-                ) : (
-                  <JoinableGamesView
-                    joinableGames={joinableGames}
-                    onJoinGame={handleJoinGame}
-                    onCreateGame={() => {
-                      triggerHaptic('medium');
-                      setCreateModalVisible(true);
-                    }}
-                    formatDate={formatDate}
-                  />
-                )}
-              </View>
-            </ScrollView>
-          </View>
-        </SafeAreaView>
-      )}
-
-      <LoginModal
-        visible={loginModalVisible}
-        onClose={() => setLoginModalVisible(false)}
-      />
-
-      <CreateGameModal
-        visible={createModalVisible}
-        onClose={() => setCreateModalVisible(false)}
-        onGameCreated={loadGames}
-      />
-
-      {activeGame && userHash && (
-        <ProofSubmissionModal
-          visible={proofModalVisible}
-          onClose={() => setProofModalVisible(false)}
-          onSubmit={handleProofSubmit}
-          gameId={activeGame.id}
-          splitType={activeGame.split_type}
-        />
-      )}
-
-      {/* How to Play Modal */}
-      <HowToPlayModal
-        visible={howToPlayModalVisible}
-        onClose={() => setHowToPlayModalVisible(false)}
-      />
-    </ImageBackground>
+        <LoginModal visible={loginModalVisible} onClose={() => setLoginModalVisible(false)} />
+        <CreateGameModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} onGameCreated={loadGames} />
+        {activeGame && userHash && (
+          <ProofSubmissionModal
+            visible={proofModalVisible}
+            onClose={() => setProofModalVisible(false)}
+            onSubmit={handleProofSubmit}
+            gameId={activeGame.id}
+            splitType={activeGame.split_type}
+          />
+        )}
+        <HowToPlayModal visible={howToPlayModalVisible} onClose={() => setHowToPlayModalVisible(false)} />
+      </ImageBackground>
+    </SwipeableTabScreen>
   );
 }
 
@@ -358,6 +377,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  safeArea: {
+    flex: 1,
+  },
   scrollWrapper: {
     flex: 1,
   },
@@ -366,7 +388,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   content: {
-    padding: 20,
+    padding: 5,
     paddingBottom: 100,
   },
   scrollableHeader: {
@@ -377,8 +399,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: 'transparent',
     marginBottom: 16,
-    marginHorizontal: -20,
-    marginTop: 10,
+    marginHorizontal: -5,
+    marginTop: 20,
   },
   headerTitle: {
     fontSize: 26,
@@ -394,7 +416,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 2,
     borderColor: '#000000',
-    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 8,
     shadowColor: '#000000',
@@ -428,5 +449,48 @@ const styles = StyleSheet.create({
   headerProfileBubbleGuest: {
     backgroundColor: '#E0E0E0',
     borderColor: '#999999',
+  },
+  profileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 18,
+  },
+  buttonPrimary: {
+    backgroundColor: '#000',
+    borderWidth: 4,
+    borderColor: '#000',
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  buttonPrimaryText: {
+    color: '#FFF',
+    textAlign: 'center',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  buttonSecondary: {
+    backgroundColor: '#FFF',
+    borderWidth: 4,
+    borderColor: '#000',
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  buttonSecondaryText: {
+    color: '#000',
+    textAlign: 'center',
+    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 14,
+    letterSpacing: 1,
   },
 });

@@ -1,21 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  ImageBackground,
-  Image,
-  Dimensions,
-  Alert,
-  ActivityIndicator
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator, ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
+import { useRoute } from '@react-navigation/native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserAvatar } from '@/components/Avatar';
+import SwipeableTabScreen from '@/components/SwipeableTabScreen';
 import LoginModal from '@/components/modals/LoginModal';
 import PaymentModal from '@/components/modals/PaymentModal';
 import BlockedUsersModal from '@/components/modals/BlockedUsersModal';
@@ -29,6 +20,7 @@ import { triggerHaptic } from '@/lib/haptics';
 
 export default function ProfileScreen() {
   const { user, signOut, loading, getUserProfile, deleteAccount } = useAuth();
+  const route = useRoute();
   const [signingOut, setSigningOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string } | null>(null);
@@ -38,36 +30,21 @@ export default function ProfileScreen() {
   const [blockedUsersModalVisible, setBlockedUsersModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
-  const [headerUserProfile, setHeaderUserProfile] = useState<{ username: string; email: string; hash: string, balance: number } | null>(null);
-
-  const [balance, setBalance] = useState(0);
-  const [totalProfit, setTotalProfit] = useState(0);
   const [totalWorkouts, setTotalWorkouts] = useState(0);
   const [gamesPlayed, setGamesPlayed] = useState(0);
-
-  const [activeGame, setActiveGame] = useState<GameWithPlayers | null>(null);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (user) {
         const profile = await getUserProfile();
         setUserProfile(profile);
-        setHeaderUserProfile(profile);
         if (profile?.hash) {
           await loadUserMetrics(profile.hash);
         }
-      } else {
-        setHeaderUserProfile(null);
       }
     };
-
     fetchUserProfile();
   }, [user]);
-
-  const handleProfilePress = () => {
-    triggerHaptic('light');
-    // Already on profile page, do nothing or scroll to top
-  };
 
   const handleHowToPlayPress = () => {
     triggerHaptic('medium');
@@ -83,52 +60,31 @@ export default function ProfileScreen() {
   );
 
   const loadUserMetrics = async (userHash: string) => {
-    console.log('=== Loading user metrics ===');
-    console.log('User hash:', userHash);
-
-    const userBalance = await getBalance(userHash);
-    setBalance(userBalance);
-
     const stats = await getStats(userHash);
-    console.log('Stats:', stats);
-    setTotalProfit(stats.profitMade);
-    setTotalWorkouts(stats.workoutLogged); 
-
+    setTotalWorkouts(stats.workoutLogged);
     const games = await getUserGames(userHash);
     setGamesPlayed(games.length);
-
-    const activeGameData = await getUserActiveGame(userHash);
-    if (activeGameData) {
-      const gameDetails = await getGameDetails(activeGameData.id);
-      setActiveGame(gameDetails);
-    } else {
-      setActiveGame(null);
-    }
   };
 
   const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            setSigningOut(true);
-            await signOut();
-            setSigningOut(false);
-          }
-        }
-      ]
-    );
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          await signOut();
+          setSigningOut(false);
+        },
+      },
+    ]);
   };
 
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
+      'Are you sure you want to delete your account? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -139,63 +95,38 @@ export default function ProfileScreen() {
               Alert.alert('Error', 'Unable to delete account. User profile not found.');
               return;
             }
-
             triggerHaptic('error');
             setDeletingAccount(true);
-
             try {
               const result = await deleteAccount(userProfile.hash);
-              
               if (result.error) {
-                Alert.alert(
-                  'Error',
-                  result.error.message || 'Failed to delete account. Please try again or contact support.'
-                );
+                Alert.alert('Error', result.error.message || 'Failed to delete account.');
                 setDeletingAccount(false);
               } else {
-                Alert.alert(
-                  'Account Deleted',
-                  'Your account has been successfully deleted.',
-                  [{ text: 'OK' }]
-                );
+                Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
               }
-            } catch (error) {
-              console.error('Delete account error:', error);
-              Alert.alert('Error', 'An unexpected error occurred. Please try again or contact support.');
+            } catch {
+              Alert.alert('Error', 'An unexpected error occurred.');
               setDeletingAccount(false);
             }
-          }
-        }
+          },
+        },
       ]
     );
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-    return `${Math.floor(diffMins / 1440)}d ago`;
   };
 
   if (!user) {
     return (
       <>
-        <ImageBackground
-          source={require('../../assets/images/AppBackground.jpg')}
+        <ImageBackground 
+          source={require('@/assets/images/AppBackground.jpg')} 
           style={styles.background}
-          imageStyle={{ resizeMode: "cover" }}
+          resizeMode="cover"
         >
           <SafeAreaView style={styles.container}>
             <View style={styles.guestContainer}>
               <Text style={styles.guestTitle}>Profile</Text>
-              <Text style={styles.guestSubtitle}>
-                Please login to view your profile
-              </Text>
+              <Text style={styles.guestSubtitle}>Please login to view your profile</Text>
               <TouchableOpacity
                 style={styles.loginButton}
                 onPress={() => {
@@ -208,21 +139,17 @@ export default function ProfileScreen() {
             </View>
           </SafeAreaView>
         </ImageBackground>
-
-        <LoginModal
-          visible={loginModalVisible}
-          onClose={() => setLoginModalVisible(false)}
-        />
+        <LoginModal visible={loginModalVisible} onClose={() => setLoginModalVisible(false)} />
       </>
     );
   }
 
   if (loading) {
     return (
-      <ImageBackground
-        source={require('../../assets/images/AppBackground.jpg')}
+      <ImageBackground 
+        source={require('@/assets/images/AppBackground.jpg')} 
         style={styles.background}
-        imageStyle={{ resizeMode: "cover" }}
+        resizeMode="cover"
       >
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#000" />
@@ -233,170 +160,114 @@ export default function ProfileScreen() {
   }
 
   return (
-    <>
-      <ImageBackground
-        source={require('../../assets/images/AppBackground.jpg')}
+    <SwipeableTabScreen currentTab={route.name}>
+      <ImageBackground 
+        source={require('@/assets/images/AppBackground.jpg')} 
         style={styles.background}
-        imageStyle={{ resizeMode: "cover" }}
+        resizeMode="cover"
       >
-        <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-          <ScrollView
-            style={styles.scrollContent}
-            contentContainerStyle={styles.scrollContentContainer}
-            showsVerticalScrollIndicator={true}
-          >
+        <SafeAreaView style={styles.container} edges={['left', 'right']}>
+          <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer} showsVerticalScrollIndicator>
             <View style={styles.content}>
-                {/* Scrollable Header */}
-                <View style={styles.scrollableHeader}>
-                  <Text style={styles.headerTitle}>PROFILE</Text>
-                  <View style={styles.headerRightContainer}>
-                    <TouchableOpacity
-                      style={styles.headerHowToPlayButton}
-                      onPress={handleHowToPlayPress}
-                    >
-                      <Text style={styles.headerHowToPlayText}>
-                        How to Play
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.headerProfileBubble}
-                      onPress={handleProfilePress}
-                    >
-                      {user && headerUserProfile?.hash ? (
-                        <UserAvatar hash={headerUserProfile.hash} size={36} />
-                      ) : (
-                        <Image 
-                          source={require('@/assets/images/noprofile.png')} 
-                          style={{ width: 40, height: 40, borderRadius: 18 }}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Profile Header */}
-                <View style={styles.profileHeader}>
-                  <View style={styles.avatar}>
+              <View style={styles.scrollableHeader}>
+                <Text style={styles.headerTitle}>PROFILE</Text>
+                <View style={styles.headerRightContainer}>
+                  <TouchableOpacity style={styles.headerHowToPlayButton} onPress={handleHowToPlayPress}>
+                    <Text style={styles.headerHowToPlayText}>How to Play</Text>
+                  </TouchableOpacity>
+                  <View style={styles.headerProfileBubble}>
                     {userProfile?.hash ? (
-                      <UserAvatar hash={userProfile.hash} size={80} />
+                      <UserAvatar hash={userProfile.hash} size={36} />
                     ) : (
-                      <Text style={styles.avatarText}>...</Text>
+                      <Image source={require('@/assets/images/noprofile.png')} style={styles.profileImage} />
                     )}
                   </View>
-                  <Text style={styles.name}>
-                    {userProfile?.username || 'Loading...'}
-                  </Text>
-                  <Text style={styles.email}>{userProfile?.email || ''}</Text>
-                  {userProfile?.hash && (
-                    <TouchableOpacity
-                      style={styles.settingsButton}
-                      onPress={() => {
-                        triggerHaptic('light');
-                        setSettingsModalVisible(true);
-                      }}
-                    >
-                      <FontAwesome name="cog" size={20} color="#000" />
-                    </TouchableOpacity>
-                  )}
                 </View>
+              </View>
 
-                {/* Metrics Cards */}
-                <View style={styles.metricsContainer}>
-                  {/* Total Workouts Card */}
-                  <View style={styles.metricCard}>
-                    <View style={styles.cardInner}>
-                      <Text style={styles.metricLabel}>TOTAL WORKOUTS</Text>
-                      <Text style={styles.metricValue}>{totalWorkouts}</Text>
-                    </View>
-                  </View>
+              <View style={styles.profileHeader}>
+                <View style={styles.avatar}>
+                  {userProfile?.hash ? <UserAvatar hash={userProfile.hash} size={80} /> : <Text style={styles.avatarText}>...</Text>}
+                </View>
+                <Text style={styles.name}>{userProfile?.username || 'Loading...'}</Text>
+                <Text style={styles.email}>{userProfile?.email || ''}</Text>
+                {userProfile?.hash && (
+                  <TouchableOpacity
+                    style={styles.settingsButton}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      setSettingsModalVisible(true);
+                    }}
+                  >
+                    <FontAwesome name="cog" size={20} color="#000" />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-                  {/* Games Played Card */}
-                  <View style={styles.metricCard}>
-                    <View style={styles.cardInner}>
-                      <Text style={styles.metricLabel}>GAMES PLAYED</Text>
-                      <Text style={styles.metricValue}>{gamesPlayed}</Text>
-                    </View>
+              <View style={styles.metricsContainer}>
+                <View style={styles.metricCard}>
+                  <View style={styles.cardInner}>
+                    <Text style={styles.metricLabel}>TOTAL WORKOUTS</Text>
+                    <Text style={styles.metricValue}>{totalWorkouts}</Text>
                   </View>
                 </View>
+                <View style={styles.metricCard}>
+                  <View style={styles.cardInner}>
+                    <Text style={styles.metricLabel}>GAMES PLAYED</Text>
+                    <Text style={styles.metricValue}>{gamesPlayed}</Text>
+                  </View>
+                </View>
+              </View>
 
-                {/* Sign Out Button */}
-                <TouchableOpacity
-                  style={styles.signOutButton}
-                  onPress={() => {
-                    triggerHaptic('warning');
-                    handleSignOut();
-                  }}
-                  disabled={signingOut}
-                >
-                  {signingOut ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Text style={styles.signOutButtonText}>SIGN OUT</Text>
-                  )}
-                </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.signOutButton}
+                onPress={() => {
+                  triggerHaptic('warning');
+                  handleSignOut();
+                }}
+                disabled={signingOut}
+              >
+                {signingOut ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.signOutButtonText}>SIGN OUT</Text>}
+              </TouchableOpacity>
 
-                {/* Delete Account Button */}
-                <TouchableOpacity
-                  style={styles.deleteAccountButton}
-                  onPress={() => {
-                    triggerHaptic('error');
-                    handleDeleteAccount();
-                  }}
-                  disabled={deletingAccount}
-                >
-                  {deletingAccount ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <Text style={styles.deleteAccountButtonText}>DELETE ACCOUNT</Text>
-                  )}
-                </TouchableOpacity>
-
+              <TouchableOpacity
+                style={styles.deleteAccountButton}
+                onPress={() => {
+                  triggerHaptic('error');
+                  handleDeleteAccount();
+                }}
+                disabled={deletingAccount}
+              >
+                {deletingAccount ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.deleteAccountButtonText}>DELETE ACCOUNT</Text>}
+              </TouchableOpacity>
             </View>
           </ScrollView>
         </SafeAreaView>
+
+        <LoginModal visible={loginModalVisible} onClose={() => setLoginModalVisible(false)} />
+        <PaymentModal
+          visible={withdrawModalVisible}
+          onClose={() => {
+            setWithdrawModalVisible(false);
+            if (userProfile?.hash) loadUserMetrics(userProfile.hash);
+          }}
+          type="withdraw"
+        />
+        {userProfile?.hash && (
+          <>
+            <SettingsModal
+              visible={settingsModalVisible}
+              onClose={() => setSettingsModalVisible(false)}
+              onUnblockUsers={() => setBlockedUsersModalVisible(true)}
+              onTermsOfService={() => setTermsModalVisible(true)}
+            />
+            <BlockedUsersModal visible={blockedUsersModalVisible} onClose={() => setBlockedUsersModalVisible(false)} userHash={userProfile.hash} />
+            <TermsModal visible={termsModalVisible} onClose={() => setTermsModalVisible(false)} />
+            <HowToPlayModal visible={howToPlayModalVisible} onClose={() => setHowToPlayModalVisible(false)} />
+          </>
+        )}
       </ImageBackground>
-
-      <LoginModal
-        visible={loginModalVisible}
-        onClose={() => setLoginModalVisible(false)}
-      />
-
-      <PaymentModal
-        visible={withdrawModalVisible}
-        onClose={() => {
-          setWithdrawModalVisible(false);
-          if (userProfile?.hash) {
-            loadUserMetrics(userProfile.hash);
-          }
-        }}
-        type="withdraw"
-      />
-
-      {userProfile?.hash && (
-        <>
-          <SettingsModal
-            visible={settingsModalVisible}
-            onClose={() => setSettingsModalVisible(false)}
-            onUnblockUsers={() => setBlockedUsersModalVisible(true)}
-            onTermsOfService={() => setTermsModalVisible(true)}
-          />
-          <BlockedUsersModal
-            visible={blockedUsersModalVisible}
-            onClose={() => setBlockedUsersModalVisible(false)}
-            userHash={userProfile.hash}
-          />
-          <TermsModal
-            visible={termsModalVisible}
-            onClose={() => setTermsModalVisible(false)}
-          />
-          <HowToPlayModal
-            visible={howToPlayModalVisible}
-            onClose={() => setHowToPlayModalVisible(false)}
-          />
-        </>
-      )}
-    </>
+    </SwipeableTabScreen>
   );
 }
 
@@ -417,7 +288,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   content: {
-    padding: 20,
+    padding: 5,
     paddingBottom: 130,
   },
   scrollableHeader: {
@@ -428,8 +299,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: 'transparent',
     marginBottom: 30,
-    marginHorizontal: -20,
-    marginTop: 10,
+    marginHorizontal: -5,
+    marginTop: 20,
   },
   headerTitle: {
     fontSize: 26,
@@ -445,7 +316,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 2,
     borderColor: '#000000',
-    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 8,
     shadowColor: '#000000',
@@ -476,6 +346,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
+  profileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 18,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -487,8 +362,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
   },
-
-  // Guest View
   guestContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -527,8 +400,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 1,
   },
-
-  // Profile Header
   profileHeader: {
     alignItems: 'center',
     marginBottom: 32,
@@ -585,55 +456,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     color: '#666666',
   },
-
-  // Balance Card
-  balanceCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 4,
-    borderColor: '#000000',
-    marginBottom: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 6, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-  },
-  balanceLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    color: '#666666',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  balanceValue: {
-    fontSize: 40,
-    fontFamily: 'Inter_800ExtraBold',
-    color: '#000000',
-  },
-
-  // Withdraw Button
-  withdrawButton: {
-    backgroundColor: '#000000',
-    borderWidth: 4,
-    borderColor: '#000000',
-    paddingVertical: 18,
-    marginTop: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-  },
-  withdrawButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: 'Inter_800ExtraBold',
-    letterSpacing: 1,
-  },
-
-  // Metrics
   metricsContainer: {
     marginBottom: 24,
   },
@@ -663,57 +485,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_800ExtraBold',
     color: '#000000',
   },
-
-  // Activity Log
-  activityLogCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 4,
-    borderColor: '#000000',
-    marginBottom: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 6, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_800ExtraBold',
-    letterSpacing: 0.5,
-  },
-  spacer: {
-    height: 16,
-  },
-  logItem: {
-    borderWidth: 2,
-    borderColor: '#000',
-    backgroundColor: '#FAFAFA',
-    padding: 10,
-    marginBottom: 8,
-  },
-  logHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  logType: {
-    fontSize: 9,
-    fontFamily: 'Inter_700Bold',
-    color: '#666',
-    letterSpacing: 0.5,
-  },
-  logTime: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#999',
-  },
-  logMessage: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#000',
-  },
-
-  // Actions
   signOutButton: {
     backgroundColor: '#000000',
     borderWidth: 4,

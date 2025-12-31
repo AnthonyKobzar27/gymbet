@@ -5,23 +5,21 @@ import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-
 import { useColorScheme } from '@/components/useColorScheme';
 import { Platform } from 'react-native';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { LaunchOverlay } from '@/components/LaunchOverlay';
+
 let StripeProvider: React.ComponentType<any>;
 if (Platform.OS !== 'web') {
   StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
 } else {
   StripeProvider = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 }
-import { AuthProvider } from '@/contexts/AuthContext';
-import { LaunchOverlay } from '@/components/LaunchOverlay';
 
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_your_key_here';
 
-export {
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -50,9 +48,7 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
+  if (!loaded) return null;
 
   return <RootLayoutNav />;
 }
@@ -62,28 +58,18 @@ function RootLayoutNav() {
   const [showIntro, setShowIntro] = useState(true);
 
   return (
-    <StripeProvider
-      publishableKey={STRIPE_PUBLISHABLE_KEY}
-      merchantIdentifier="merchant.com.snooze"
-    >
+    <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.com.snooze">
       <AuthProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <React.Fragment>
-              <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                <Stack.Screen name="mission" options={{ headerShown: false }} />
-                <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
-                <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
-              </Stack>
-
-              {showIntro && (
-                <LaunchOverlay onFinished={() => setShowIntro(false)} />
-              )}
-            </React.Fragment>
-          </ThemeProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
+            </Stack>
+            {showIntro && <LaunchOverlay onFinished={() => setShowIntro(false)} />}
+          </>
+        </ThemeProvider>
       </AuthProvider>
     </StripeProvider>
   );
 }
-

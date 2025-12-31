@@ -65,11 +65,11 @@ export async function createGame(
   weeklySchedule: WeeklySchedule,
   stake: number
 ): Promise<{ ok: boolean; game?: Game; error?: any }> {
-  if (!stake || typeof stake !== 'number' || !isFinite(stake)) {
+  if (typeof stake !== 'number' || !isFinite(stake) || stake < 0) {
     return { ok: false, error: { message: 'Invalid stake amount' } };
   }
 
-  if (stake < 0.50) {
+  if (stake > 0 && stake < 0.50) {
     return { ok: false, error: { message: 'Minimum stake is $0.50' } };
   }
 

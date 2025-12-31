@@ -2,7 +2,7 @@
   "expo": {
     "name": "GymBet",
     "slug": "snoozeapp",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/GYMBETS.png",
     "scheme": "gymbet",

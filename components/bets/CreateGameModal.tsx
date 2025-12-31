@@ -19,19 +19,8 @@ export default function CreateGameModal({ visible, onClose, onGameCreated }: Cre
     saturday: 'Legs',
     sunday: 'Rest',
   });
-  const [newGameStake, setNewGameStake] = useState('10');
-
   const handleCreateGame = async () => {
-    if (!newGameStake) {
-      Alert.alert('Error', 'Please enter a stake amount');
-      return;
-    }
-
-    const stake = parseFloat(newGameStake);
-    if (isNaN(stake) || stake <= 0) {
-      Alert.alert('Error', 'Please enter a valid stake amount');
-      return;
-    }
+    const stake = 0;
 
     const result = await createGame(newGameSchedule, stake);
 
@@ -47,7 +36,6 @@ export default function CreateGameModal({ visible, onClose, onGameCreated }: Cre
         saturday: 'Legs',
         sunday: 'Rest',
       });
-      setNewGameStake('10');
       onGameCreated();
     } else {
       console.error('Failed to create game:', result.error);
@@ -147,17 +135,6 @@ export default function CreateGameModal({ visible, onClose, onGameCreated }: Cre
               </View>
             </View>
           </View>
-
-          {/* Stake Amount */}
-          <Text style={styles.inputLabel}>STAKE AMOUNT ($)</Text>
-          <TextInput
-            style={styles.input}
-            value={newGameStake}
-            onChangeText={setNewGameStake}
-            placeholder="10"
-            keyboardType="numeric"
-            placeholderTextColor="#999"
-          />
 
           <View style={styles.modalButtons}>
             <TouchableOpacity

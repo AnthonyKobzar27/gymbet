@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Image, Modal, TextInput } from 'react-native';
-import { ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Line, Circle } from 'react-native-svg';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStats, addWorkout, canLogWorkoutToday as checkCanLogWorkout } from '@/lib/homepage_utils';
 import { subscribeToActivityFeed, voteOnProof, removeVote, getVoteCounts, getUserVotes, getProofsForValidator, checkPBFTValidation } from '@/lib/activity_log_utils';
-import { getUserActiveGame, getGameDetails, getJoinableGames, joinGame } from '@/lib/game_utils';
+import { getUserActiveGame, getGameDetails } from '@/lib/game_utils';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
 import { UserAvatar } from '@/components/Avatar';
 import { triggerHaptic } from '@/lib/haptics';
 import FlagBlockModal from '@/components/modals/FlagBlockModal';
@@ -405,9 +402,7 @@ export default function HomeScreen() {
       setCanLogWorkoutToday(false);
       loadUserData();
     } else {
-      console.error('Failed to add workout:', result.error);
       const errorMessage = result.error?.message || 'Unknown error';
-
       if (errorMessage.includes('already logged workout today')) {
         triggerHaptic('warning');
         Alert.alert('Already Logged', 'You have already logged your workout for today. Come back tomorrow!');
@@ -493,61 +488,21 @@ export default function HomeScreen() {
         triggerHaptic('error');
         Alert.alert('Proof Rejected', 'This proof was rejected by the validators');
       }
-    } catch (error) {
-      console.error('Error voting:', error);
+    } catch {
       loadFeed();
     }
   };
 
-  const handleJoinRandomGame = async () => {
-    if (!userHash) {
-      triggerHaptic('error');
-      Alert.alert('Error', 'Please log in first');
-      return;
-    }
-
-    triggerHaptic('medium');
-    
-    // Always only show free games (stake = $0) for random join
-    const games = await getJoinableGames(true);
-
-    if (games.length === 0) {
-      triggerHaptic('warning');
-      Alert.alert('No Games Available', 'There are no free games to join right now!');
-      return;
-    }
-
-    const randomGame = games[0];
-    const result = await joinGame(randomGame.id, userHash);
-
-    if (result.ok) {
-      triggerHaptic('success');
-      Alert.alert('Success!', 'Joined free game!');
-
-      await checkActiveGame();
-
-      router.push('/bets');
-    } else {
-      triggerHaptic('error');
-      console.error('Failed to join game:', result.error);
-      Alert.alert('Error', result.error?.message || 'Failed to join game');
-    }
-  };
   
   return (
-    <ImageBackground
-      source={require('../../assets/images/AppBackground.jpg')}
-      style={styles.background}
-      imageStyle={{resizeMode: "cover"}}
-    >
-    <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
+    <View style={styles.background}>
+    <SafeAreaView style={{ flex: 1 }} edges={['left', 'right']}>
       <View style={styles.scrollWrapper}>
       <ScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={true}
       >
         <View style={styles.content}>
-          {/* Scrollable Header */}
           <View style={styles.scrollableHeader}>
             <Text style={styles.headerTitle}>HOME</Text>
             <View style={styles.headerRightContainer}>
@@ -576,10 +531,9 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Training Split Tracker */}
           <View style={styles.arcadeCard}>
             <View style={styles.cardInner}>
-              <Text style={styles.cardTitle}>WEEKLY SPLIT</Text>
+              <Text style={styles.cardTitle}>MY SPLIT</Text>
               <View style={styles.spacer} />
 
               {!hasActiveGame ? (
@@ -588,7 +542,6 @@ export default function HomeScreen() {
                 </Text>
               ) : activeGame?.weekly_schedule ? (
                 <>
-                  {/* Weekly Schedule Grid */}
                   <View style={styles.weeklyGrid}>
                     {['M', 'T', 'W', 'TH', 'F', 'S', 'S'].map((dayLabel, index) => {
                       const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -610,7 +563,9 @@ export default function HomeScreen() {
                   <View style={styles.metricRow}>
                     <View style={styles.metricLeft}>
                       <Text style={styles.statLabel}>TODAY</Text>
-                      <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>{currentSplitDay}</Text>
+                      <View style={styles.statValueContainer}>
+                        <Text style={styles.statValue} numberOfLines={1}>{currentSplitDay}</Text>
+                      </View>
                     </View>
 
                   </View>
@@ -622,11 +577,10 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Feed Section */}
           <View style={styles.arcadeCard}>
             <View style={styles.cardInner}>
               <View style={styles.feedHeaderRow}>
-                <Text style={styles.cardTitle}>ACTIVITY FEED</Text>
+                <Text style={styles.cardTitleFlex}>ACTIVITY FEED</Text>
                 <View style={styles.toggleContainer}>
                   <TouchableOpacity
                     style={[
@@ -671,19 +625,32 @@ export default function HomeScreen() {
                   ? feedItems.filter(item => item.type === 'workout' || item.type === 'proof')
                   : feedItems;
                 
-                return filteredItems.length === 0 ? (
-                <Text style={styles.feedAction}>No activity yet. Be the first to join a game!</Text>
-                ) : (
+                if (filteredItems.length === 0) {
+                  return (
+                    <View style={styles.emptyFeedContainer}>
+                      <Text style={styles.emptyFeedText}>Feed is empty</Text>
+                    </View>
+                  );
+                }
+                
+                return (
                   <ScrollView
                     style={styles.feedScrollView}
+                    contentContainerStyle={styles.feedScrollContent}
                     showsVerticalScrollIndicator={true}
                     nestedScrollEnabled={true}
                   >
-                    {filteredItems.map((item) => (
-                    <View key={item.id} style={styles.feedItem}>
+                    {filteredItems.length > 0 && (
+                      <View style={styles.feedDividerWrapper}>
+                        <View style={styles.feedDivider} />
+                      </View>
+                    )}
+                    {filteredItems.map((item, index) => (
+                      <View key={item.id}>
+                        <View style={styles.feedItem}>
                       <View style={styles.feedHeader}>
                         <View style={styles.feedUserRow}>
-                          <UserAvatar hash={item.userHash} size={32} />
+                          <UserAvatar hash={item.userHash} size={28} />
                           <View style={styles.feedUserInfo}>
                             <View style={styles.feedUserRowTop}>
                               <Text style={styles.feedUser}>
@@ -818,40 +785,25 @@ export default function HomeScreen() {
                           </View>
                         </>
                       )}
-                    </View>
+                        </View>
+                        {index < filteredItems.length - 1 && (
+                          <View style={styles.feedDividerWrapper}>
+                            <View style={styles.feedDivider} />
+                          </View>
+                        )}
+                      </View>
                     ))}
                   </ScrollView>
                 );
               })()}
-
-              <TouchableOpacity 
-                style={styles.viewMoreButton} 
-                onPress={() => {
-                  triggerHaptic('light');
-                  loadFeed();
-                }}
-              >
-                <Text style={styles.viewMoreText}>REFRESH ACTIVITY →</Text>
-              </TouchableOpacity>
             </View>
           </View>
-          
-          {/* Action Buttons - Only show if user doesn't have an active game */}
-          {!hasActiveGame && (
-            <TouchableOpacity
-              style={styles.buttonSecondary}
-              onPress={handleJoinRandomGame}
-            >
-              <Text style={styles.buttonSecondaryText}>JOIN RANDOM GAME</Text>
-            </TouchableOpacity>
-          )}
-          
+
         </View>
       </ScrollView>
       </View>
     </SafeAreaView>
 
-    {/* Flag/Block Modal */}
     {selectedItem && (
       <FlagBlockModal
         visible={flagBlockModalVisible}
@@ -865,13 +817,11 @@ export default function HomeScreen() {
       />
     )}
 
-    {/* How to Play Modal */}
     <HowToPlayModal
       visible={howToPlayModalVisible}
       onClose={() => setHowToPlayModalVisible(false)}
     />
 
-    {/* Workout Split Log Modal */}
     <Modal
       animationType="fade"
       transparent={true}
@@ -912,7 +862,7 @@ export default function HomeScreen() {
         </View>
       </View>
     </Modal>
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -923,6 +873,7 @@ const styles = StyleSheet.create({
     height: '100%',
     margin: 0,
     padding: 0,
+    backgroundColor: 'transparent',
   },
   scrollWrapper: {
     flex: 1,
@@ -932,7 +883,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   content: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 5,
     paddingBottom: 50,
   },
   scrollableHeader: {
@@ -943,8 +894,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: 'transparent',
     marginBottom: 16,
-    marginHorizontal: -20,
-    marginTop: 30,
+    marginHorizontal: -5,
+    marginTop: 20,
   },
   headerTitle: {
     fontSize: 26,
@@ -1013,6 +964,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Inter_800ExtraBold',
     letterSpacing: 0.5,
+  },
+  cardTitleFlex: {
+    fontSize: 18,
+    fontFamily: 'Inter_800ExtraBold',
+    letterSpacing: 0.5,
     flex: 1,
     flexShrink: 1,
   },
@@ -1059,6 +1015,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    paddingVertical: 8,
+    minHeight: 80,
   },
   metricLeft: {
     flex: 1,
@@ -1073,11 +1031,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 6,
   },
+  statValueContainer: {
+    height: 60,
+    justifyContent: 'flex-start',
+  },
   statValue: {
     fontSize: 36,
     fontFamily: 'Inter_800ExtraBold',
     marginBottom: 4,
-    minHeight: 45,
+    lineHeight: 45,
   },
   statSubtext: {
     fontSize: 11,
@@ -1119,33 +1081,21 @@ const styles = StyleSheet.create({
   },
   feedScrollView: {
     maxHeight: 600,
+    backgroundColor: '#FFF',
+    marginHorizontal: -20,
+  },
+  feedScrollContent: {
   },
   feedItem: {
-    borderWidth: 3,
-    borderColor: '#000',
-    backgroundColor: '#FAFAFA',
-    padding: 12,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 3,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 34,
+    paddingVertical: 10,
   },
-  feedItemPending: {
-    borderColor: '#FFD700',
-    backgroundColor: '#FFFEF0',
-    borderWidth: 4,
+  feedDividerWrapper: {
   },
-  feedItemApproved: {
-    borderColor: '#4CAF50',
-    backgroundColor: '#F0FFF4',
-    borderWidth: 4,
-  },
-  feedItemRejected: {
-    borderColor: '#F44336',
-    backgroundColor: '#FFF5F5',
-    borderWidth: 4,
+  feedDivider: {
+    height: 2,
+    backgroundColor: '#000',
   },
   feedHeader: {
     flexDirection: 'row',
@@ -1188,16 +1138,16 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   feedUser: {
-    fontSize: 12,
-    fontFamily: 'Inter_700Bold',
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
     color: '#000',
     letterSpacing: 0.3,
     marginBottom: 2,
   },
   feedTimestamp: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: 'Inter_600SemiBold',
-    color: '#999',
+    color: 'rgba(0, 0, 0, 0.50)',
     letterSpacing: 0.3,
   },
   feedActionContainer: {
@@ -1207,10 +1157,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   feedAction: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
     color: '#000',
-    lineHeight: 18,
+    lineHeight: 14,
     flex: 1,
   },
   feedActionWin: {
@@ -1220,8 +1170,6 @@ const styles = StyleSheet.create({
     color: '#FF0000', // Red for losses
   },
   statusBadge: {
-    borderWidth: 2,
-    borderColor: '#000',
     paddingHorizontal: 8,
     paddingVertical: 4,
     marginLeft: 8,
@@ -1262,7 +1210,7 @@ const styles = StyleSheet.create({
   imageContainer: {
     position: 'relative',
     width: '100%',
-    marginTop: 12,
+    marginTop: 8,
     overflow: 'visible',
   },
   feedImage: {
@@ -1322,23 +1270,16 @@ const styles = StyleSheet.create({
   voteButtonTextActive: {
     color: '#FFF',
   },
-  viewMoreButton: {
-    marginTop: 8,
-    paddingVertical: 12,
-    borderWidth: 2,
-    borderColor: '#000',
-    backgroundColor: '#FFF',
+  emptyFeedContainer: {
+    paddingVertical: 40,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    justifyContent: 'center',
   },
-  viewMoreText: {
-    fontSize: 10,
-    fontFamily: 'Inter_800ExtraBold',
-    letterSpacing: 0.5,
+  emptyFeedText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+    textAlign: 'center',
   },
   scrollContent: {
     flexGrow: 1,
@@ -1475,13 +1416,14 @@ const styles = StyleSheet.create({
   dayBox: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 2,
     borderWidth: 2,
     borderColor: '#E0E0E0',
     backgroundColor: '#FAFAFA',
     marginHorizontal: 2,
     minWidth: 0,
+    minHeight: 50,
   },
   dayBoxActive: {
     borderColor: '#000',
@@ -1500,7 +1442,7 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   dayBoxValue: {
-    fontSize: 10,
+    fontSize: 8,
     fontFamily: 'Inter_600SemiBold',
     color: '#000',
     textAlign: 'center',
