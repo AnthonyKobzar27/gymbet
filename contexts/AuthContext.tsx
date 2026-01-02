@@ -9,11 +9,13 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, username: string) => Promise<{ error: any }>;
+  onboardingCompleted: boolean | null; // null = not checked yet, true/false = checked
+  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   deleteAccount: (userHash: string) => Promise<{ error: any }>;
   getUserProfile: () => Promise<{ username: string; email: string; hash: string; balance: number } | null>;
+  checkOnboardingStatus: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,25 +34,80 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
+
+  const checkOnboardingStatus = async () => {
+    if (!user) {
+      setOnboardingCompleted(null);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error || !data) {
+        setOnboardingCompleted(false);
+        return;
+      }
+
+      setOnboardingCompleted(data.onboarding_completed === true);
+    } catch (error) {
+      setOnboardingCompleted(false);
+    }
+  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const checkStatusForUser = async (userId: string | undefined) => {
+      if (!userId) {
+        setOnboardingCompleted(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (error || !data) {
+          setOnboardingCompleted(false);
+          return;
+        }
+
+        setOnboardingCompleted(data.onboarding_completed === true);
+      } catch (error) {
+        setOnboardingCompleted(false);
+      }
+    };
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // Check onboarding status after session is loaded
+      await checkStatusForUser(session?.user?.id);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      
+      // Check onboarding status when auth state changes
+      await checkStatusForUser(session?.user?.id);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, username: string) => {
+  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null) => {
     try {
       setLoading(true);
       const normalizedEmail = email.toLowerCase();
@@ -68,6 +125,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: normalizedEmail,
         username: username,
         hash: userHash,
+        onboarding_completed: false, // Explicitly set to false on signup
+        gender: gender || null,
+        age: age || null,
       });
 
       if (profileError) return { error: profileError };
@@ -168,11 +228,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     session,
     loading,
+    onboardingCompleted,
     signUp,
     signIn,
     signOut,
     deleteAccount,
     getUserProfile,
+    checkOnboardingStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

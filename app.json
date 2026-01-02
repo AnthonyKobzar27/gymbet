@@ -47,7 +47,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/GYMBETS.png"
     },
     "plugins": [

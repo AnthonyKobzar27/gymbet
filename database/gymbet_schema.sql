@@ -14,8 +14,31 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT NOT NULL,
   username TEXT NULL,
   hash TEXT NOT NULL,
-  CONSTRAINT profiles_pkey PRIMARY KEY (email)
+  user_id UUID NULL,
+  onboarding_completed BOOLEAN NOT NULL DEFAULT false,
+  gender TEXT NULL,
+  age NUMERIC NULL,
+  CONSTRAINT profiles_pkey PRIMARY KEY (email),
+  CONSTRAINT profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 ) TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles USING btree (user_id) TABLESPACE pg_default;
+
+CREATE OR REPLACE FUNCTION set_user_id_from_auth()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.user_id IS NULL THEN
+    NEW.user_id := auth.uid();
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS profiles_set_user_id ON public.profiles;
+CREATE TRIGGER profiles_set_user_id
+  BEFORE INSERT ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION set_user_id_from_auth();
 
 -- RLS Policies for profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;

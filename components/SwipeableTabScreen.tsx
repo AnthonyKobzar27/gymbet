@@ -8,7 +8,7 @@ interface SwipeableTabScreenProps {
   currentTab: string;
 }
 
-const TABS = ['index', 'bets', 'profile'];
+const TABS = ['index', 'proofs', 'bets', 'profile'];
 const SWIPE_THRESHOLD = 50;
 const VELOCITY_THRESHOLD = 0.3;
 
