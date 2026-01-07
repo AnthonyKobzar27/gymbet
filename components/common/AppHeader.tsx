@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDataCache } from '@/contexts/DataCacheContext';
 import { UserAvatar } from '@/components/Avatar';
 import { triggerHaptic } from '@/lib/haptics';
-import { getUnreadCount } from '@/lib/notification_utils';
-import { useFocusEffect } from 'expo-router';
 
 const fontFamily = Platform.select({
   ios: 'System',
@@ -15,35 +14,15 @@ const fontFamily = Platform.select({
 });
 
 export default function AppHeader() {
-  const { user, getUserProfile } = useAuth();
-  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string; balance?: number } | null>(null);
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const { user, balanceRefreshTrigger } = useAuth();
+  const { cache, refreshBalance } = useDataCache();
 
+  // Refresh balance when trigger changes (from game actions)
   useEffect(() => {
-    const loadProfile = async () => {
-      if (user) {
-        const profile = await getUserProfile();
-        setUserProfile(profile);
-        if (profile?.hash) {
-          await loadUnreadCount(profile.hash);
-        }
-      }
-    };
-    loadProfile();
-  }, [user]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      if (userProfile?.hash) {
-        loadUnreadCount(userProfile.hash);
-      }
-    }, [userProfile?.hash])
-  );
-
-  const loadUnreadCount = async (userHash: string) => {
-    const count = await getUnreadCount(userHash);
-    setUnreadNotificationCount(count);
-  };
+    if (balanceRefreshTrigger > 0) {
+      refreshBalance();
+    }
+  }, [balanceRefreshTrigger]);
 
   const handleProfilePress = () => {
     triggerHaptic('light');
@@ -53,6 +32,9 @@ export default function AppHeader() {
   if (!user) {
     return null;
   }
+
+  const userProfile = cache.userProfile;
+  const unreadCount = cache.unreadCount;
 
   return (
     <View style={styles.stickyHeader}>
@@ -65,10 +47,10 @@ export default function AppHeader() {
       >
         <View>
           <Ionicons name="notifications-outline" size={32} color="#000" />
-          {unreadNotificationCount > 0 && (
+          {unreadCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
-                {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                {unreadCount > 99 ? '99+' : unreadCount}
               </Text>
             </View>
           )}
@@ -183,4 +165,3 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
 });
-

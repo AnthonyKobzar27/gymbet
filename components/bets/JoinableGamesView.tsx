@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, Platform } from 'react-native';
-import { Game } from '@/lib/game_utils';
+import { Game } from '@/types/game';
 import { triggerHaptic } from '@/lib/haptics';
 
 const fontFamily = Platform.select({

@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Platform } from 'react-native';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { DataCacheProvider } from '@/contexts/DataCacheContext';
 import { LaunchOverlay } from '@/components/LaunchOverlay';
 
 let StripeProvider: React.ComponentType<any>;
@@ -22,7 +23,7 @@ const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: 'index',
   ssr: false,
 };
 
@@ -60,19 +61,22 @@ function RootLayoutNav() {
   return (
     <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY} merchantIdentifier="merchant.com.snooze">
       <AuthProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <>
-            <Stack>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
-              <Stack.Screen name="signin" options={{ headerShown: false, animation: 'none' }} />
-              <Stack.Screen name="signup" options={{ headerShown: false, animation: 'none' }} />
-              <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'none' }} />
-              <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_left' }} />
-            </Stack>
-            {showIntro && <LaunchOverlay onFinished={() => setShowIntro(false)} />}
-          </>
-        </ThemeProvider>
+        <DataCacheProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <>
+              <Stack>
+                <Stack.Screen name="index" options={{ headerShown: false }} />
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
+                <Stack.Screen name="signin" options={{ headerShown: false, animation: 'none' }} />
+                <Stack.Screen name="signup" options={{ headerShown: false, animation: 'none' }} />
+                <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'none' }} />
+                <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_left' }} />
+              </Stack>
+              {showIntro && <LaunchOverlay onFinished={() => setShowIntro(false)} />}
+            </>
+          </ThemeProvider>
+        </DataCacheProvider>
       </AuthProvider>
     </StripeProvider>
   );

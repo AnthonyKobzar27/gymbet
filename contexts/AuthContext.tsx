@@ -17,6 +17,8 @@ interface AuthContextType {
   deleteAccount: (userHash: string) => Promise<{ error: any }>;
   getUserProfile: () => Promise<{ username: string; email: string; hash: string; balance: number; gender?: string | null } | null>;
   checkOnboardingStatus: () => Promise<void>;
+  refreshBalance: () => Promise<void>;
+  balanceRefreshTrigger: number; // Internal trigger for balance refresh
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,6 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
+  const [balanceRefreshTrigger, setBalanceRefreshTrigger] = useState(0);
 
   const checkOnboardingStatus = async () => {
     if (!user) {
@@ -233,6 +236,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Refresh balance - triggers a re-fetch in components that use getUserProfile
+  const refreshBalance = async () => {
+    // Trigger a state update that components can react to
+    setBalanceRefreshTrigger(prev => prev + 1);
+  };
+
   const value = {
     user,
     session,
@@ -244,6 +253,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteAccount,
     getUserProfile,
     checkOnboardingStatus,
+    refreshBalance,
+    balanceRefreshTrigger,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

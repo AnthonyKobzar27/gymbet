@@ -11,7 +11,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { GameLog } from '@/lib/game_utils';
+import { GameLog } from '@/types/game';
 
 interface ChatModalProps {
   visible: boolean;

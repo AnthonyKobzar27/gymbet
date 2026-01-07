@@ -6,8 +6,9 @@ import TabBar from '@/components/footer/TabBar';
 import CameraButton from '@/components/footer/CameraButton';
 import ProofSubmissionModal from '@/components/modals/ProofSubmissionModal';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserActiveGame, getGameDetails, getGameSubmissions, submitWakeupProof } from '@/lib/game_utils';
+import { getUserActiveGame, getGameDetails, getGameSubmissions, submitWakeupProof } from '@/lib/game';
 import { triggerHaptic } from '@/lib/haptics';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 export default function TabLayout() {
   const { user, onboardingCompleted, getUserProfile } = useAuth();
@@ -16,6 +17,9 @@ export default function TabLayout() {
   const [userHash, setUserHash] = useState<string | null>(null);
   const [hasSubmittedToday, setHasSubmittedToday] = useState(false);
   const [canSubmitProof, setCanSubmitProof] = useState(false);
+
+  // Initialize push notifications
+  usePushNotifications();
   
   // Show tab bar when user is logged in and onboarding is completed (or still checking)
   // Only hide it if onboarding is explicitly false (not completed)

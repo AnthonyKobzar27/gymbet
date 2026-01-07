@@ -19,7 +19,8 @@
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to view and manage workout proof photos",
         "NSPhotoLibraryAddUsageDescription": "We need permission to save workout proof photos to your library",
         "NSUserNotificationsUsageDescription": "We send reminders for your training split challenges and notifications when validators vote on your proofs",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {
@@ -44,7 +45,8 @@
         "monochromeImage": "./assets/images/GYMBETS.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "single",
@@ -67,7 +69,9 @@
       [
         "expo-notifications",
         {
-          "color": "#ffffff"
+          "icon": "./assets/images/GYMBETS.png",
+          "color": "#000000",
+          "defaultChannel": "default"
         }
       ]
     ],

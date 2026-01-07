@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { GameWithPlayers } from '@/lib/game_utils';
+import { GameWithPlayers } from '@/types/game';
 import { UserAvatar } from '@/components/Avatar';
 import { triggerHaptic } from '@/lib/haptics';
 

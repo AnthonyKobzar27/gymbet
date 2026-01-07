@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { createGame, WeeklySchedule } from '@/lib/game_utils';
+import { createGame } from '@/lib/game';
+import { WeeklySchedule } from '@/types/game';
 import { triggerHaptic } from '@/lib/haptics';
 
 interface CreateGameModalProps {

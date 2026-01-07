@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { triggerHaptic } from '@/lib/haptics';
-import { useAuth } from '@/contexts/AuthContext';
-import { getNotifications, markNotificationAsRead, Notification } from '@/lib/notification_utils';
+import { useDataCache } from '@/contexts/DataCacheContext';
+import { markNotificationAsRead, Notification } from '@/lib/notification_utils';
 import { router } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
 
 const fontFamily = Platform.select({
   ios: 'System',
@@ -15,30 +14,11 @@ const fontFamily = Platform.select({
 });
 
 export default function NotificationsScreen() {
-  const { getUserProfile } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { cache, refreshNotifications } = useDataCache();
+  const [localNotifications, setLocalNotifications] = useState<Notification[] | null>(null);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadNotifications();
-    }, [])
-  );
-
-  const loadNotifications = async () => {
-    const profile = await getUserProfile();
-    if (!profile?.hash) return;
-
-    setLoading(true);
-    try {
-      const notifs = await getNotifications(profile.hash);
-      setNotifications(notifs);
-    } catch (error) {
-      console.error('Error loading notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Use local state if modified, otherwise use cache
+  const notifications = localNotifications ?? cache.notifications;
 
   const handleNotificationPress = async (notification: Notification) => {
     if (notification.read) return;
@@ -47,10 +27,14 @@ export default function NotificationsScreen() {
     try {
       const result = await markNotificationAsRead(notification.id);
       if (result.ok) {
-        // Update the notification in the local state
-        setNotifications(prev =>
-          prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+        // Update local state immediately for instant feedback
+        setLocalNotifications(prev => 
+          (prev ?? cache.notifications).map(n => 
+            n.id === notification.id ? { ...n, read: true } : n
+          )
         );
+        // Refresh cache in background
+        refreshNotifications();
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -87,12 +71,7 @@ export default function NotificationsScreen() {
       </View>
 
       <ScrollView style={styles.notificationsList} contentContainerStyle={styles.notificationsContent}>
-        {loading ? (
-          <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color="#000" />
-            <Text style={styles.emptyStateText}>Loading notifications...</Text>
-          </View>
-        ) : notifications.length === 0 ? (
+        {notifications.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="notifications-outline" size={48} color="#999" />
             <Text style={styles.emptyStateText}>No notifications</Text>

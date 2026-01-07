@@ -75,12 +75,6 @@ export default function SignInScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
-              <Text style={styles.backButtonText}>←</Text>
-            </TouchableOpacity>
 
             <View style={styles.logoContainer}>
               <Image
@@ -183,6 +177,7 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     marginBottom: 40,
+    marginTop: 90,
   },
   logo: {
     width: 150,
