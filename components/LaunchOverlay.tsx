@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Image } from 'react-native';
-import { ImageBackground } from 'react-native';
 import { triggerHaptic } from '@/lib/haptics';
 
 const { width, height } = Dimensions.get('window');
@@ -60,20 +59,8 @@ export function LaunchOverlay({ onFinished }: LaunchOverlayProps) {
         { opacity },
       ]}
     >
-      {/* Use the main app background so it feels consistent */}
-      <ImageBackground
-        source={require('@/assets/images/AppBackground.jpg')}
-        style={styles.backgroundLayer}
-        imageStyle={{ resizeMode: 'cover' }}
-      >
-        {/* Wavy GymBets bands over the background */}
-        <View style={styles.wavesContainer}>
-          <View style={[styles.wave, styles.waveTop]} />
-          <View style={[styles.wave, styles.waveMiddle]} />
-          <View style={[styles.wave, styles.waveBottom]} />
-        </View>
-
-        {/* Center logo only */}
+      {/* Simple background with logo animation */}
+      <View style={styles.backgroundLayer}>
         <Animated.View style={[styles.centerContent, { transform: [{ scale }] }]}>
           <Image
             source={require('@/assets/images/GYMBETS.png')}
@@ -81,7 +68,7 @@ export function LaunchOverlay({ onFinished }: LaunchOverlayProps) {
             resizeMode="contain"
           />
         </Animated.View>
-      </ImageBackground>
+      </View>
     </Animated.View>
   );
 }
@@ -96,36 +83,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+    backgroundColor: '#f7f7f7',
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
-  },
-  wavesContainer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  // Wavy-ish bands (rounded stripes) that feel relaxed but still like lines
-  wave: {
-    position: 'absolute',
-    width: width * 1.8,
-    height: height * 0.25,
-    borderRadius: height * 0.25, // rounded edges but still band-like
-    opacity: 0.9,
-    transform: [{ rotate: '-18deg' }],
-  },
-  waveTop: {
-    backgroundColor: '#fdcff3', // light GymBets pink
-    top: -height * 0.25,
-    left: -width * 0.4,
-  },
-  waveMiddle: {
-    backgroundColor: '#9cd6ff', // soft blue
-    top: height * 0.05,
-    right: -width * 0.5,
-  },
-  waveBottom: {
-    backgroundColor: '#ffd5ff', // lighter pink
-    bottom: -height * 0.25,
-    left: -width * 0.3,
   },
   centerContent: {
     alignItems: 'center',
@@ -134,7 +94,6 @@ const styles = StyleSheet.create({
   logo: {
     width: width * 0.5,
     height: width * 0.5,
-    // Slightly rounded like an App Store icon, not a circle
     borderRadius: width * 0.12,
     marginBottom: 0,
   },

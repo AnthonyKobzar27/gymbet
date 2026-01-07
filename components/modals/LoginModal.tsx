@@ -12,6 +12,8 @@ import {
   Platform,
   Keyboard,
   Pressable,
+  TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { triggerHaptic } from '@/lib/haptics';
@@ -55,6 +57,9 @@ export default function LoginModal({
       setPassword('');
       setUsername('');
       setAcceptedEULA(false);
+    } else {
+      // Dismiss keyboard when modal closes
+      Keyboard.dismiss();
     }
   }, [visible, defaultMode]);
 
@@ -114,108 +119,120 @@ export default function LoginModal({
     }
   };
 
+  const handleClose = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <Pressable style={styles.backdrop} onPress={Keyboard.dismiss} />
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.centered}
-      >
-        <View style={styles.card}>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>←</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.title}>
-            {isLogin ? 'Welcome Back!' : 'Join GymBet'}
-          </Text>
-
-          <Text style={styles.subtitle}>
-            {isLogin
-              ? 'Sign in to continue your discipline journey'
-              : 'Start betting on your discipline goals!'}
-          </Text>
-
-          {!isLogin && (
-            <Input
-              label="Username"
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Enter your username"
-            />
-          )}
-
-          <Input
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholder="Enter your email"
-          />
-
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Enter your password"
-          />
-
-          {!isLogin && (
-            <TouchableOpacity
-              style={styles.eulaContainer}
-              onPress={() => {
-                triggerHaptic('light');
-                setAcceptedEULA(!acceptedEULA);
-              }}
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
+      <Pressable style={styles.backdrop} onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.centered}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              <View style={[styles.checkbox, acceptedEULA && styles.checkboxChecked]}>
-                {acceptedEULA && <Text style={styles.checkmark}>✓</Text>}
-              </View>
+              <View style={styles.card}>
+                <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+                  <Text style={styles.closeButtonText}>←</Text>
+                </TouchableOpacity>
 
-              <Text style={styles.eulaText}>
-                I agree to the{' '}
-                <Text style={styles.linkText} onPress={() => setTermsModalVisible(true)}>
-                  Terms of Service
-                </Text>{' '}
-                and{' '}
-                <Text
-                  style={styles.linkText}
-                  onPress={() => setGuidelinesModalVisible(true)}
-                >
-                  Community Guidelines
+                <Text style={styles.title}>
+                  {isLogin ? 'Welcome Back!' : 'Join GymBet'}
                 </Text>
-                . I understand there is zero tolerance for objectionable content or
-                abusive users, and violations will result in immediate removal.
-              </Text>
-            </TouchableOpacity>
-          )}
 
-          <TouchableOpacity
-            style={[styles.authButton, loading && styles.disabled]}
-            onPress={handleAuth}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.authButtonText}>
-                {isLogin ? 'SIGN IN' : 'CREATE ACCOUNT'}
-              </Text>
-            )}
-          </TouchableOpacity>
+                <Text style={styles.subtitle}>
+                  {isLogin
+                    ? 'Sign in to continue your discipline journey'
+                    : 'Start betting on your discipline goals!'}
+                </Text>
 
-          <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
-            <Text style={styles.switchText}>
-              {isLogin
-                ? "Don't have an account? Sign up"
-                : 'Already have an account? Sign in'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+                {!isLogin && (
+                  <Input
+                    label="Username"
+                    value={username}
+                    onChangeText={setUsername}
+                    placeholder="Enter your username"
+                  />
+                )}
+
+                <Input
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholder="Enter your email"
+                />
+
+                <Input
+                  label="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  placeholder="Enter your password"
+                />
+
+                {!isLogin && (
+                  <TouchableOpacity
+                    style={styles.eulaContainer}
+                    onPress={() => {
+                      triggerHaptic('light');
+                      setAcceptedEULA(!acceptedEULA);
+                    }}
+                  >
+                    <View style={[styles.checkbox, acceptedEULA && styles.checkboxChecked]}>
+                      {acceptedEULA && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+
+                    <Text style={styles.eulaText}>
+                      I agree to the{' '}
+                      <Text style={styles.linkText} onPress={() => setTermsModalVisible(true)}>
+                        Terms of Service
+                      </Text>{' '}
+                      and{' '}
+                      <Text
+                        style={styles.linkText}
+                        onPress={() => setGuidelinesModalVisible(true)}
+                      >
+                        Community Guidelines
+                      </Text>
+                      . I understand there is zero tolerance for objectionable content or
+                      abusive users, and violations will result in immediate removal.
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.authButton, loading && styles.disabled]}
+                  onPress={handleAuth}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.authButtonText}>
+                      {isLogin ? 'SIGN IN' : 'CREATE ACCOUNT'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
+                  <Text style={styles.switchText}>
+                    {isLogin
+                      ? "Don't have an account? Sign up"
+                      : 'Already have an account? Sign in'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
 
       <TermsModal visible={termsModalVisible} onClose={() => setTermsModalVisible(false)} />
       <CommunityGuidelinesModal
@@ -242,13 +259,19 @@ function Input(props: any) {
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
   },
   card: {
     width: '90%',

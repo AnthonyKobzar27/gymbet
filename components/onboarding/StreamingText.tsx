@@ -72,6 +72,7 @@ export default function StreamingText({
 
 const styles = StyleSheet.create({
   text: {
+    textAlign: 'center',
     // SF Pro Rounded on iOS, fallback on others
   },
   cursor: {

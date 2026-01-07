@@ -8,13 +8,16 @@ export function useOnboarding() {
 
   useEffect(() => {
     if (!user) {
+      setShowOnboarding(false);
+      return;
+    }
+    
+    // Only show onboarding if explicitly false (not completed)
+    // If null, it means we're still checking, so don't show onboarding yet
+    if (onboardingCompleted === false) {
       setShowOnboarding(true);
     } else {
-      if (onboardingCompleted === false || onboardingCompleted === null) {
-        setShowOnboarding(true);
-      } else {
-        setShowOnboarding(false);
-      }
+      setShowOnboarding(false);
     }
   }, [user, onboardingCompleted]);
 

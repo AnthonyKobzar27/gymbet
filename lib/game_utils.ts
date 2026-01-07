@@ -480,9 +480,14 @@ export async function getUserActiveGame(userHash: string): Promise<Game | null> 
     .select('game_id, games(*)')
     .eq('user_hash', userHash)
     .eq('status', 'active')
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
+    console.error('getUserActiveGame error:', error);
+    return null;
+  }
+
+  if (!data) {
     return null;
   }
 

@@ -1,30 +1,44 @@
 import React, { useState, useRef } from 'react';
 import { View, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { triggerHaptic } from '@/lib/haptics';
-import LoginModal from '@/components/modals/LoginModal';
-import OnboardingSlide from './OnboardingSlide';
+import { router } from 'expo-router';
 import OnboardingFooter from './OnboardingFooter';
 import QuestionsSlide from './QuestionsSlide';
-import { ONBOARDING_SLIDES } from './onboardingData';
+import WelcomeSlide from './slides/WelcomeSlide';
+import HowItWorksSlide from './slides/HowItWorksSlide';
+import ProofsSlide from './slides/ProofsSlide';
+import WinRewardsSlide from './slides/WinRewardsSlide';
+import BlocksSlide from './slides/BlocksSlide';
+import LetsGetStartedSlide from './slides/LetsGetStartedSlide';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const TOTAL_SLIDES = 6;
 
 interface OnboardingScreenProps {
   onComplete: () => void;
+  initialShowQuestions?: boolean;
 }
 
-export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
+export default function OnboardingScreen({ onComplete, initialShowQuestions = false }: OnboardingScreenProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [showQuestionsSlide, setShowQuestionsSlide] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [userAge, setUserAge] = useState<number | null>(null);
-  const [userGender, setUserGender] = useState<string | null>(null);
+  const [showQuestionsSlide, setShowQuestionsSlide] = useState(initialShowQuestions);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // If coming back from signup, ensure we're on the last slide
+  React.useEffect(() => {
+    if (initialShowQuestions) {
+      setCurrentSlide(TOTAL_SLIDES - 1);
+      scrollViewRef.current?.scrollTo({
+        x: (TOTAL_SLIDES - 1) * SCREEN_WIDTH,
+        animated: false,
+      });
+    }
+  }, [initialShowQuestions]);
 
   const handleNext = () => {
     triggerHaptic('light');
     
-    if (currentSlide < ONBOARDING_SLIDES.length - 1) {
+    if (currentSlide < TOTAL_SLIDES - 1) {
       const nextSlide = currentSlide + 1;
       setCurrentSlide(nextSlide);
       scrollViewRef.current?.scrollTo({
@@ -38,16 +52,21 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
   };
 
   const handleQuestionsComplete = (age: number, gender: string | null) => {
-    setUserAge(age);
-    setUserGender(gender);
     setShowQuestionsSlide(false);
-    setShowLoginModal(true);
+    // Redirect to signup page with age and gender params
+    router.replace({
+      pathname: '/signup',
+      params: {
+        age: age.toString(),
+        gender: gender || '',
+      },
+    });
   };
 
   const handleQuestionsBack = () => {
     setShowQuestionsSlide(false);
     // Go back to last onboarding slide
-    setCurrentSlide(ONBOARDING_SLIDES.length - 1);
+    setCurrentSlide(TOTAL_SLIDES - 1);
   };
 
   const handleBack = () => {
@@ -63,16 +82,6 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     }
   };
 
-  const handleLoginModalClose = () => {
-    setShowLoginModal(false);
-    // Don't mark onboarding as complete - only complete when user actually signs up
-  };
-
-  const handleSignUpSuccess = () => {
-    setShowLoginModal(false);
-    // Mark onboarding as complete only after successful sign up
-    onComplete();
-  };
 
   if (showQuestionsSlide) {
     return (
@@ -87,44 +96,64 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
 
   return (
     <View style={styles.container}>
-      {!showLoginModal && (
-        <View style={styles.content}>
-          <ScrollView
-            ref={scrollViewRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={false}
-            style={styles.scrollView}
-          >
-            {ONBOARDING_SLIDES.map((slide, index) => (
-              <View key={index} style={styles.slideContainer}>
-                <OnboardingSlide 
-                  slide={slide} 
-                  isActive={index === currentSlide}
-                  slideIndex={index}
-                  currentSlide={currentSlide}
-                  onBack={handleBack}
-                />
-              </View>
-            ))}
-          </ScrollView>
+      <View style={styles.content}>
+        <ScrollView
+          ref={scrollViewRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={false}
+          style={styles.scrollView}
+        >
+          <View style={styles.slideContainer}>
+            <WelcomeSlide 
+              isActive={0 === currentSlide}
+              currentSlide={currentSlide}
+              onBack={handleBack}
+            />
+          </View>
+          <View style={styles.slideContainer}>
+            <HowItWorksSlide 
+              isActive={1 === currentSlide}
+              currentSlide={currentSlide}
+              onBack={handleBack}
+            />
+          </View>
+          <View style={styles.slideContainer}>
+            <ProofsSlide 
+              isActive={2 === currentSlide}
+              currentSlide={currentSlide}
+              onBack={handleBack}
+            />
+          </View>
+          <View style={styles.slideContainer}>
+            <WinRewardsSlide 
+              isActive={3 === currentSlide}
+              currentSlide={currentSlide}
+              onBack={handleBack}
+            />
+          </View>
+          <View style={styles.slideContainer}>
+            <BlocksSlide 
+              isActive={4 === currentSlide}
+              currentSlide={currentSlide}
+              onBack={handleBack}
+            />
+          </View>
+          <View style={styles.slideContainer}>
+            <LetsGetStartedSlide 
+              isActive={5 === currentSlide}
+              currentSlide={currentSlide}
+              onBack={handleBack}
+            />
+          </View>
+        </ScrollView>
 
-          <OnboardingFooter
-            currentSlide={currentSlide}
-            onNext={handleNext}
-          />
-        </View>
-      )}
-
-      <LoginModal
-        visible={showLoginModal}
-        onClose={handleLoginModalClose}
-        onSignUpSuccess={handleSignUpSuccess}
-        defaultMode="signup"
-        userAge={userAge}
-        userGender={userGender}
-      />
+        <OnboardingFooter
+          currentSlide={currentSlide}
+          onNext={handleNext}
+        />
+      </View>
     </View>
   );
 }

@@ -5,14 +5,22 @@ import {
   Modal,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { triggerHaptic } from '@/lib/haptics';
+
+const fontFamily = Platform.select({
+  ios: 'System',
+  android: 'sans-serif',
+  default: 'system-ui',
+});
 
 interface SettingsModalProps {
   visible: boolean;
   onClose: () => void;
   onUnblockUsers: () => void;
   onTermsOfService: () => void;
+  onFeedback: () => void;
 }
 
 export default function SettingsModal({
@@ -20,6 +28,7 @@ export default function SettingsModal({
   onClose,
   onUnblockUsers,
   onTermsOfService,
+  onFeedback,
 }: SettingsModalProps) {
   return (
     <Modal
@@ -63,6 +72,17 @@ export default function SettingsModal({
           >
             <Text style={styles.optionText}>TERMS OF SERVICE</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.optionButton}
+            onPress={() => {
+              triggerHaptic('medium');
+              onFeedback();
+              onClose();
+            }}
+          >
+            <Text style={styles.optionText}>FEEDBACK</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -82,12 +102,7 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: '#000000',
     padding: 24,
-    borderRadius: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 8, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
+    borderRadius: 16,
   },
   headerRow: {
     flexDirection: 'row',
@@ -96,29 +111,34 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    fontSize: 16,
-    fontFamily: 'Inter_800ExtraBold',
+    fontSize: 18,
+    fontFamily: fontFamily,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     color: '#000',
   },
   closeButton: {
     fontSize: 18,
-    fontFamily: 'Inter_800ExtraBold',
+    fontFamily: fontFamily,
+    fontWeight: '800',
     color: '#000',
   },
   optionButton: {
     backgroundColor: '#000',
-    borderWidth: 2,
+    borderWidth: 4,
     borderColor: '#000',
     paddingVertical: 16,
     paddingHorizontal: 20,
     marginBottom: 12,
+    borderRadius: 12,
   },
   optionText: {
     color: '#FFF',
     fontSize: 14,
-    fontFamily: 'Inter_800ExtraBold',
+    fontFamily: fontFamily,
+    fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
 });
 

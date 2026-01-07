@@ -192,12 +192,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'nowrap',
+    width: '100%',
   },
   text: {
     fontSize: 15,
     lineHeight: 22,
     fontWeight: '500',
     color: '#666',
+    textAlign: 'center',
   },
   token: {
     width: 18,

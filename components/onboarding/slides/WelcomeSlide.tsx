@@ -1,24 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, Platform, Dimensions, TouchableOpacity } from 'react-native';
-import { Slide } from './onboardingData';
-import StreamingText from './StreamingText';
-import StreamingTextWithImage from './StreamingTextWithImage';
+import StreamingText from '../StreamingText';
 import { triggerHaptic } from '@/lib/haptics';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const TEXT_CONTAINER_BOTTOM = 250; // Bottom position of text container
+const TEXT_CONTAINER_BOTTOM = 250;
 
-interface OnboardingSlideProps {
-  slide: Slide;
+interface WelcomeSlideProps {
   isActive: boolean;
-  slideIndex: number;
   currentSlide: number;
   onBack: () => void;
 }
 
-export default function OnboardingSlide({ slide, isActive, slideIndex, currentSlide, onBack }: OnboardingSlideProps) {
+export default function WelcomeSlide({ isActive, currentSlide, onBack }: WelcomeSlideProps) {
   const [titleComplete, setTitleComplete] = useState(false);
-  const [key, setKey] = useState(0); // Key to force remount of StreamingText components
+  const [key, setKey] = useState(0);
   
   const fontFamily = Platform.select({
     ios: 'System',
@@ -26,13 +22,15 @@ export default function OnboardingSlide({ slide, isActive, slideIndex, currentSl
     default: 'system-ui',
   });
 
-  // Reset streaming when slide becomes active
   useEffect(() => {
     if (isActive) {
       setTitleComplete(false);
-      setKey(prev => prev + 1); // Force remount to restart streaming
+      setKey(prev => prev + 1);
     }
-  }, [isActive, slideIndex]);
+  }, [isActive]);
+
+  const title = 'Welcome to GymBet!';
+  const description = "We're so incredibly grateful to have you! Gymbets makes working out more fun and consistent through adding a fun incentive - lets show you around!";
 
   return (
     <View style={styles.container}>
@@ -45,24 +43,19 @@ export default function OnboardingSlide({ slide, isActive, slideIndex, currentSl
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
       )}
-      {slide.showLogo && (
-        <View style={styles.logoContainer}>
-          <Image
-            source={slideIndex === 1 
-              ? require('@/assets/images/homepage_pics/benchpress_girl.png')
-              : require('@/assets/images/GYMBETS.png')
-            }
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
-      )}
+      <View style={styles.logoContainer}>
+        <Image
+          source={require('@/assets/images/GYMBETS.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </View>
       <View style={styles.textContainer}>
         <View style={styles.titleContainer}>
           {isActive && (
             <StreamingText
               key={`title-${key}`}
-              text={slide.title}
+              text={title}
               style={[styles.title, { fontFamily }]}
               onComplete={() => setTitleComplete(true)}
               delay={60}
@@ -71,24 +64,12 @@ export default function OnboardingSlide({ slide, isActive, slideIndex, currentSl
         </View>
         <View style={styles.descriptionContainer}>
           {isActive && titleComplete && (
-            slide.description.includes('[TOKEN]') ? (
-              <StreamingTextWithImage
-                key={`description-${key}`}
-                text={slide.description}
-                imagePlaceholder="[TOKEN]"
-                imageSource={require('@/assets/images/token.png')}
-                imageStyle={styles.tokenImage}
-                style={[styles.description, { fontFamily }]}
-                delay={45}
-              />
-            ) : (
-              <StreamingText
-                key={`description-${key}`}
-                text={slide.description}
-                style={[styles.description, { fontFamily }]}
-                delay={45}
-              />
-            )
+            <StreamingText
+              key={`description-${key}`}
+              text={description}
+              style={[styles.description, { fontFamily }]}
+              delay={45}
+            />
           )}
         </View>
       </View>
@@ -115,7 +96,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     position: 'absolute',
-    top: (SCREEN_HEIGHT - TEXT_CONTAINER_BOTTOM) / 2 - 120, // Center between top (0) and text top, minus half logo height
+    top: (SCREEN_HEIGHT - TEXT_CONTAINER_BOTTOM) / 2 - 120,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -126,17 +107,6 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 40,
     overflow: 'hidden',
-  },
-  emojiContainer: {
-    position: 'absolute',
-    top: 100,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: 80,
   },
   textContainer: {
     position: 'absolute',
@@ -179,10 +149,6 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 22,
-  },
-  tokenImage: {
-    width: 20,
-    height: 20,
   },
 });
 

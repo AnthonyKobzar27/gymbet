@@ -4,17 +4,18 @@ import { User, Session } from '@supabase/supabase-js';
 import SHA256 from 'crypto-js/sha256';
 import { initBalance, getBalance } from '../lib/transaction_utils';
 import { initStats } from '../lib/homepage_utils';
+import { createNotification } from '../lib/notification_utils';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   onboardingCompleted: boolean | null; // null = not checked yet, true/false = checked
-  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted?: boolean) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   deleteAccount: (userHash: string) => Promise<{ error: any }>;
-  getUserProfile: () => Promise<{ username: string; email: string; hash: string; balance: number } | null>;
+  getUserProfile: () => Promise<{ username: string; email: string; hash: string; balance: number; gender?: string | null } | null>;
   checkOnboardingStatus: () => Promise<void>;
 }
 
@@ -107,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null) => {
+  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted: boolean = false) => {
     try {
       setLoading(true);
       const normalizedEmail = email.toLowerCase();
@@ -125,7 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: normalizedEmail,
         username: username,
         hash: userHash,
-        onboarding_completed: false, // Explicitly set to false on signup
+        onboarding_completed: onboardingCompleted, // Set based on whether user came from onboarding
         gender: gender || null,
         age: age || null,
       });
@@ -134,6 +135,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await initBalance(userHash);
       await initStats(userHash);
+
+      // Send welcome notification
+      await createNotification(
+        userHash,
+        'Welcome To Gymbets',
+        'Thanks for joining Gymbets! Start by joining a game or creating your own. Good luck and stay consistent!',
+        'welcome'
+      );
 
       return { error: null };
     } catch (err) {
@@ -210,7 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('username, email, hash')
+        .select('username, email, hash, gender')
         .eq('email', user.email)
         .maybeSingle();
 
@@ -218,7 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const balance = await getBalance(data.hash);
 
-      return { username: data.username, email: data.email, hash: data.hash, balance };
+      return { username: data.username, email: data.email, hash: data.hash, balance, gender: data.gender };
     } catch {
       return null;
     }

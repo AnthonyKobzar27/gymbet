@@ -65,6 +65,10 @@ function RootLayoutNav() {
             <Stack>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="auth" options={{ presentation: 'modal', title: 'Login' }} />
+              <Stack.Screen name="signin" options={{ headerShown: false, animation: 'none' }} />
+              <Stack.Screen name="signup" options={{ headerShown: false, animation: 'none' }} />
+              <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'none' }} />
+              <Stack.Screen name="notifications" options={{ headerShown: false, animation: 'slide_from_left' }} />
             </Stack>
             {showIntro && <LaunchOverlay onFinished={() => setShowIntro(false)} />}
           </>

@@ -1,111 +1,119 @@
-import * as Notifications from 'expo-notifications';
+import { supabase } from './supabase';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
-export async function requestNotificationPermissions(): Promise<boolean> {
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    return false;
-  }
-
-  return true;
+export interface Notification {
+  id: string;
+  user_hash: string;
+  title: string;
+  message: string;
+  type?: string;
+  read: boolean;
+  created_at: string;
 }
 
-export async function scheduleMorningReminder(): Promise<string | null> {
+export async function getNotifications(userHash: string): Promise<Notification[]> {
   try {
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Workout proof reminder!',
-        body: 'Submit your workout proof today!',
-        sound: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      },
-      trigger: {
-        hour: 8,
-        minute: 0,
-        repeats: true,
-      } as any,
-    });
-    return notificationId;
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_hash', userHash)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Failed to fetch notifications:', error);
+      return [];
+    }
+
+    return data || [];
   } catch (error) {
-    console.error('Error scheduling morning reminder:', error);
-    return null;
+    console.error('Error fetching notifications:', error);
+    return [];
   }
 }
 
-export async function scheduleNightlyReminder(): Promise<string | null> {
+export async function getUnreadCount(userHash: string): Promise<number> {
   try {
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Workout proof reminder!',
-        body: 'Make sure you submitted your workout proof!',
-        sound: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      },
-      trigger: {
-        hour: 21,
-        minute: 0,
-        repeats: true,
-      } as any,
-    });
-    return notificationId;
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_hash', userHash)
+      .eq('read', false);
+
+    if (error) {
+      console.error('Failed to get unread count:', error);
+      return 0;
+    }
+
+    return count || 0;
   } catch (error) {
-    console.error('Error scheduling nightly reminder:', error);
-    return null;
+    console.error('Error getting unread count:', error);
+    return 0;
   }
 }
 
-export async function notifyGameStart(): Promise<void> {
+export async function markNotificationAsRead(notificationId: string): Promise<{ ok: boolean; error?: any }> {
   try {
-    const hasPermission = await requestNotificationPermissions();
-    if (!hasPermission) return;
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId);
 
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Game started!',
-        body: 'Your game has begun! Submit your workout proofs to stay in the game.',
-        sound: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      },
-      trigger: null,
-    });
+    if (error) {
+      console.error('Failed to mark notification as read:', error);
+      return { ok: false, error };
+    }
+
+    return { ok: true };
   } catch (error) {
-    console.error('Error sending game start notification:', error);
+    console.error('Error marking notification as read:', error);
+    return { ok: false, error };
   }
 }
 
-export async function cancelAllNotifications(): Promise<void> {
+export async function markAllNotificationsAsRead(userHash: string): Promise<{ ok: boolean; error?: any }> {
   try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_hash', userHash)
+      .eq('read', false);
+
+    if (error) {
+      console.error('Failed to mark all notifications as read:', error);
+      return { ok: false, error };
+    }
+
+    return { ok: true };
   } catch (error) {
-    console.error('Error canceling notifications:', error);
+    console.error('Error marking all notifications as read:', error);
+    return { ok: false, error };
   }
 }
 
-export async function setupGameNotifications(): Promise<void> {
-  const hasPermission = await requestNotificationPermissions();
-  if (!hasPermission) return;
+export async function createNotification(
+  userHash: string,
+  title: string,
+  message: string,
+  type?: string
+): Promise<{ ok: boolean; error?: any }> {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .insert({
+        user_hash: userHash,
+        title,
+        message,
+        type,
+        read: false,
+      });
 
-  await cancelAllNotifications();
-  await scheduleMorningReminder();
-  await scheduleNightlyReminder();
-}
+    if (error) {
+      console.error('Failed to create notification:', error);
+      return { ok: false, error };
+    }
 
-export async function clearGameNotifications(): Promise<void> {
-  await cancelAllNotifications();
+    return { ok: true };
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    return { ok: false, error };
+  }
 }

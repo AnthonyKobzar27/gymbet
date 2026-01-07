@@ -6,10 +6,12 @@ import { triggerHaptic } from '@/lib/haptics';
 
 interface CameraButtonProps {
   onPress: () => void;
+  enabled: boolean;
 }
 
-export default function CameraButton({ onPress }: CameraButtonProps) {
+export default function CameraButton({ onPress, enabled }: CameraButtonProps) {
   const handlePress = () => {
+    if (!enabled) return;
     triggerHaptic('medium');
     onPress();
   };
@@ -17,10 +19,11 @@ export default function CameraButton({ onPress }: CameraButtonProps) {
   return (
     <TouchableOpacity
       style={styles.container}
-      activeOpacity={0.7}
+      activeOpacity={enabled ? 0.7 : 1}
       onPress={handlePress}
+      disabled={!enabled}
     >
-      <View style={styles.circle}>
+      <View style={[styles.circle, !enabled && styles.circleDisabled]}>
         <Ionicons name="camera" size={36} color="#fff" />
       </View>
     </TouchableOpacity>
@@ -49,15 +52,10 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 5,
-    ...Platform.select({
-      android: {
-        elevation: 5,
-      },
-    }),
+  },
+  circleDisabled: {
+    backgroundColor: '#999',
+    borderColor: '#CCC',
   },
 });
 
