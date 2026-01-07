@@ -22,10 +22,12 @@ import {
   getProofsForValidator,
   getProofsWithValidators,
   checkPBFTValidation,
+  challengeProof,
   ActivityLog 
 } from '@/lib/activity_log_utils';
 import { getBlockedUsers } from '@/lib/flagging_utils';
 import { UserAvatar } from '@/components/Avatar';
+import { supabase } from '@/lib/supabase';
 
 interface ProofItem {
   id: string;
@@ -47,8 +49,11 @@ export default function ProofsScreen() {
   const route = useRoute();
   const { user, getUserProfile } = useAuth();
   const [proofs, setProofs] = useState<ProofItem[]>([]);
+  const [allProofs, setAllProofs] = useState<ProofItem[]>([]);
+  const [myProofs, setMyProofs] = useState<ProofItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [userHash, setUserHash] = useState<string | null>(null);
+  const [showMyProofs, setShowMyProofs] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -80,13 +85,121 @@ export default function ProofsScreen() {
     return `${Math.floor(diffMins / 1440)}d ago`;
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      if (userHash) {
-        loadProofs();
+  const loadMyProofs = useCallback(async () => {
+    if (!userHash) return;
+
+    try {
+      const { data: myActivityLogs, error } = await supabase
+        .from('activity_log')
+        .select('*')
+        .eq('user_hash', userHash)
+        .in('typeofmessage', ['workout', 'proof'])
+        .order('timestep', { ascending: false });
+
+      if (error) {
+        console.error('Failed to load my proofs:', error);
+        return;
       }
-    }, [userHash])
-  );
+
+      if (!myActivityLogs || myActivityLogs.length === 0) {
+        setMyProofs([]);
+        return;
+      }
+
+      const allProofIds = myActivityLogs.map(log => log.id);
+      const [voteCounts, userVotesMap, proofsWithValidators] = await Promise.all([
+        getVoteCounts(allProofIds),
+        getUserVotes(allProofIds, userHash),
+        getProofsWithValidators(allProofIds),
+      ]);
+
+      const myProofItems: ProofItem[] = myActivityLogs.map(log => {
+        const counts = voteCounts.get(log.id) || { approvals: 0, rejections: 0 };
+        const userVote = userVotesMap.get(log.id) || null;
+        const hasValidatorsAssigned = proofsWithValidators.has(log.id);
+        const createdAt = new Date(log.timestep);
+        const now = new Date();
+        const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        
+        const totalVotes = counts.approvals + counts.rejections;
+        const requiredApprovals = log.required_approvals || 0;
+        const totalValidators = log.total_validators || 0;
+        
+        const MIN_VOTES_FOR_DECISION = 10;
+        
+        let hasReachedConsensus = false;
+        if (totalVotes < MIN_VOTES_FOR_DECISION) {
+          hasReachedConsensus = false;
+        } else if (hasValidatorsAssigned && totalValidators > 0) {
+          hasReachedConsensus = 
+            (counts.approvals >= requiredApprovals) ||
+            (counts.rejections > (totalValidators - requiredApprovals)) ||
+            log.validation_status === 'approved' ||
+            log.validation_status === 'rejected';
+        } else {
+          const approvalMajority = counts.approvals > counts.rejections;
+          const rejectionMajority = counts.rejections > counts.approvals;
+          hasReachedConsensus = 
+            approvalMajority ||
+            rejectionMajority ||
+            log.validation_status === 'approved' ||
+            log.validation_status === 'rejected';
+        }
+        
+        const timeRemaining = 48 - hoursSinceCreation;
+        
+        let validationStatus: 'pending' | 'approved' | 'rejected' = 'pending';
+        
+        if (log.validation_status === 'approved' || log.validation_status === 'rejected') {
+          validationStatus = log.validation_status;
+        } else if (totalVotes < MIN_VOTES_FOR_DECISION) {
+          validationStatus = 'pending';
+        } else if (hasReachedConsensus) {
+          if (hasValidatorsAssigned && totalValidators > 0) {
+            if (counts.approvals >= requiredApprovals) {
+              validationStatus = 'approved';
+            } else if (counts.rejections > (totalValidators - requiredApprovals)) {
+              validationStatus = 'rejected';
+            }
+          } else {
+            if (counts.approvals > counts.rejections) {
+              validationStatus = 'approved';
+            } else if (counts.rejections > counts.approvals) {
+              validationStatus = 'rejected';
+            }
+          }
+        }
+        
+        const isPending = validationStatus === 'pending';
+
+        return {
+          id: log.id.toString(),
+          userHash: log.user_hash,
+          message: log.message,
+          timestamp: formatTimestamp(log.timestep),
+          image: log.image,
+          approvals: counts.approvals,
+          rejections: counts.rejections,
+          userVote: userVote ?? null,
+          canVote: false, // User can't vote on their own proofs
+          createdAt,
+          isPending,
+          timeRemaining: isPending ? timeRemaining : undefined,
+          validationStatus,
+        };
+      });
+
+      // Sort by newest first
+      myProofItems.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      setMyProofs(myProofItems);
+      // Update displayed proofs if currently showing my proofs
+      if (showMyProofs) {
+        setProofs(myProofItems);
+      }
+    } catch (error) {
+      console.error('Failed to load my proofs:', error);
+    }
+  }, [userHash]);
 
   const loadProofs = useCallback(async () => {
     if (!userHash) return;
@@ -196,6 +309,7 @@ export default function ProofsScreen() {
 
       // Sort by newest first
       proofItems.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      setAllProofs(proofItems);
       setProofs(proofItems);
     } catch (error) {
       console.error('Failed to load proofs:', error);
@@ -204,9 +318,49 @@ export default function ProofsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadProofs();
+    await Promise.all([loadProofs(), loadMyProofs()]);
     setRefreshing(false);
-  }, [loadProofs]);
+  }, [loadProofs, loadMyProofs]);
+
+  const handleChallenge = async (proofId: string) => {
+    if (!userHash) {
+      triggerHaptic('error');
+      Alert.alert('Error', 'Please log in to challenge a proof');
+      return;
+    }
+
+    triggerHaptic('medium');
+    
+    Alert.alert(
+      'Challenge Proof',
+      'Are you sure you want to send this proof to the developers for review?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Challenge',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await challengeProof(parseInt(proofId), userHash);
+              if (result.ok) {
+                triggerHaptic('success');
+                Alert.alert('Success', 'Your challenge has been submitted to the developers for review.');
+              } else {
+                triggerHaptic('error');
+                Alert.alert('Error', result.error?.message || 'Failed to challenge proof');
+              }
+            } catch (error) {
+              triggerHaptic('error');
+              Alert.alert('Error', 'Failed to challenge proof');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleVote = async (proofId: string, voteType: 'approve' | 'reject') => {
     if (!userHash) {
@@ -294,6 +448,19 @@ export default function ProofsScreen() {
     <View style={styles.background}>
         <SafeAreaView style={styles.container} edges={['left', 'right', 'top']}>
           <AppHeader />
+          <View style={styles.myProofsButtonContainer}>
+            <TouchableOpacity
+              style={[styles.myProofsButton, showMyProofs && styles.myProofsButtonActive]}
+              onPress={() => {
+                triggerHaptic('light');
+                setShowMyProofs(!showMyProofs);
+              }}
+            >
+              <Text style={[styles.myProofsButtonText, showMyProofs && styles.myProofsButtonTextActive]}>
+                {showMyProofs ? 'All Proofs' : 'My Proofs'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <ScrollView 
             style={styles.scrollContent} 
             contentContainerStyle={styles.scrollContentContainer}
@@ -301,8 +468,12 @@ export default function ProofsScreen() {
           >
             {proofs.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No proofs yet</Text>
-                <Text style={styles.emptySubtext}>Workout proofs will appear here</Text>
+                <Text style={styles.emptyText}>
+                  {showMyProofs ? 'No proofs submitted yet' : 'No proofs yet'}
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  {showMyProofs ? 'Your workout proofs will appear here' : 'Workout proofs will appear here'}
+                </Text>
               </View>
             ) : (
               proofs.map((proof) => (
@@ -357,7 +528,7 @@ export default function ProofsScreen() {
                   </View>
 
                   {/* Vote Buttons */}
-                  {proof.canVote && (
+                  {proof.canVote && !showMyProofs && (
                     <View style={styles.voteContainer}>
                       <TouchableOpacity
                         style={[
@@ -394,12 +565,53 @@ export default function ProofsScreen() {
                     </View>
                   )}
 
-                  {/* Vote Counts (if not votable) */}
-                  {!proof.canVote && (
+                  {/* Status Badge for My Proofs view */}
+                  {showMyProofs && (
+                    <View style={[
+                      styles.statusBadge,
+                      proof.validationStatus === 'approved' && styles.statusBadgeApproved,
+                      proof.validationStatus === 'rejected' && styles.statusBadgeRejected,
+                      proof.validationStatus === 'pending' && styles.statusBadgePending
+                    ]}>
+                      <Text style={[
+                        styles.statusText,
+                        proof.validationStatus === 'approved' && styles.statusTextApproved,
+                        proof.validationStatus === 'rejected' && styles.statusTextRejected,
+                        proof.validationStatus === 'pending' && styles.statusTextPending
+                      ]}>
+                        {proof.validationStatus === 'approved' ? '✓ APPROVED' : 
+                         proof.validationStatus === 'rejected' ? '✗ REJECTED' : 
+                         '⏳ PENDING'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Challenge Button for My Proofs (only for approved/rejected) */}
+                  {showMyProofs && proof.validationStatus !== 'pending' && (
+                    <View style={styles.challengeContainer}>
+                      <TouchableOpacity
+                        style={styles.challengeButton}
+                        onPress={() => handleChallenge(proof.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.challengeButtonText}>
+                          Challenge for Review
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Vote Counts (if not votable or showing my proofs) */}
+                  {(!proof.canVote || showMyProofs) && (
                     <View style={styles.voteCountsContainer}>
                       <Text style={styles.voteCountsText}>
-                        {proof.approvals} ✓ • {proof.rejections} ✕
+                        {proof.approvals} ✓ Approvals • {proof.rejections} ✕ Rejections
                       </Text>
+                      {proof.isPending && proof.timeRemaining !== undefined && (
+                        <Text style={styles.timerText}>
+                          {Math.max(0, Math.floor(proof.timeRemaining))}h remaining
+                        </Text>
+                      )}
                     </View>
                   )}
                 </View>
@@ -492,12 +704,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  timerText: {
-    fontSize: 10,
-    fontFamily: fontFamily,
-    fontWeight: '800',
-    color: '#000',
-  },
   proofImage: {
     width: '100%',
     height: 400,
@@ -586,5 +792,67 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily,
     fontWeight: '600',
     color: '#666',
+  },
+  myProofsButtonContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  myProofsButton: {
+    backgroundColor: '#FFF',
+    borderWidth: 3,
+    borderColor: '#000',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  myProofsButtonActive: {
+    backgroundColor: '#000',
+  },
+  myProofsButtonText: {
+    color: '#000',
+    fontSize: 14,
+    fontFamily: fontFamily,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  myProofsButtonTextActive: {
+    color: '#FFF',
+  },
+  statusBadgePending: {
+    backgroundColor: '#FFA500',
+  },
+  statusTextPending: {
+    color: '#FFF',
+  },
+  timerText: {
+    fontSize: 11,
+    fontFamily: fontFamily,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 4,
+  },
+  challengeContainer: {
+    padding: 12,
+    paddingTop: 0,
+  },
+  challengeButton: {
+    backgroundColor: '#FFF',
+    borderWidth: 3,
+    borderColor: '#FF6B6B',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeButtonText: {
+    fontSize: 13,
+    fontFamily: fontFamily,
+    fontWeight: '800',
+    color: '#FF6B6B',
+    letterSpacing: 0.5,
   },
 });
