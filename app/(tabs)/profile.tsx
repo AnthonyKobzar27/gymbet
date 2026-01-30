@@ -10,6 +10,7 @@ import SettingsModal from '@/components/modals/SettingsModal';
 import TermsModal from '@/components/modals/TermsModal';
 import HowToPlayModal from '@/components/modals/HowToPlayModal';
 import FeedbackModal from '@/components/modals/FeedbackModal';
+import ReferralCodeModal from '@/components/modals/ReferralCodeModal';
 import ProfileHeader from '@/components/profile/ProfileHeader';
 import ProfileMetrics from '@/components/profile/ProfileMetrics';
 import ProfileActions from '@/components/profile/ProfileActions';
@@ -29,13 +30,14 @@ export default function ProfileScreen() {
   const route = useRoute();
   const [signingOut, setSigningOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string; balance?: number } | null>(null);
+  const [userProfile, setUserProfile] = useState<{ username: string; email: string; hash: string; balance?: number; referralCode?: string | null } | null>(null);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [blockedUsersModalVisible, setBlockedUsersModalVisible] = useState(false);
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [howToPlayModalVisible, setHowToPlayModalVisible] = useState(false);
   const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
+  const [referralCodeModalVisible, setReferralCodeModalVisible] = useState(false);
 
   const { totalWorkouts, gamesPlayed, loadUserMetrics } = useProfile(userProfile?.hash || null);
   const { handleSignOut, handleDeleteAccount } = useProfileActions(userProfile?.hash || null);
@@ -136,11 +138,17 @@ export default function ProfileScreen() {
               onUnblockUsers={() => setBlockedUsersModalVisible(true)}
               onTermsOfService={() => setTermsModalVisible(true)}
               onFeedback={() => setFeedbackModalVisible(true)}
+              onReferralCode={() => setReferralCodeModalVisible(true)}
             />
             <BlockedUsersModal visible={blockedUsersModalVisible} onClose={() => setBlockedUsersModalVisible(false)} userHash={userProfile.hash} />
             <TermsModal visible={termsModalVisible} onClose={() => setTermsModalVisible(false)} />
             <HowToPlayModal visible={howToPlayModalVisible} onClose={() => setHowToPlayModalVisible(false)} />
             <FeedbackModal visible={feedbackModalVisible} onClose={() => setFeedbackModalVisible(false)} />
+            <ReferralCodeModal
+              visible={referralCodeModalVisible}
+              onClose={() => setReferralCodeModalVisible(false)}
+              referralCode={userProfile.referralCode || null}
+            />
           </>
         )}
       </View>

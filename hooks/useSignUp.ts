@@ -8,6 +8,7 @@ export const useSignUp = (userAge: number | null, userGender: string | null, use
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [acceptedEULA, setAcceptedEULA] = useState(false);
   const { signUp, checkOnboardingStatus } = useAuth();
@@ -33,7 +34,7 @@ export const useSignUp = (userAge: number | null, userGender: string | null, use
 
     try {
       const cameFromOnboarding = userAge !== null || userGender !== null;
-      const { error } = await signUp(email, password, username, userAge, userGender, cameFromOnboarding, userPhoneNumber);
+      const { error } = await signUp(email, password, username, userAge, userGender, cameFromOnboarding, userPhoneNumber, referralCode || null);
       if (error) throw error;
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -47,17 +48,19 @@ export const useSignUp = (userAge: number | null, userGender: string | null, use
     } finally {
       setLoading(false);
     }
-  }, [email, password, username, acceptedEULA, userAge, userGender, userPhoneNumber, signUp, checkOnboardingStatus]);
+  }, [email, password, username, referralCode, acceptedEULA, userAge, userGender, userPhoneNumber, signUp, checkOnboardingStatus]);
 
   return {
     email,
     password,
     username,
+    referralCode,
     loading,
     acceptedEULA,
     setEmail,
     setPassword,
     setUsername,
+    setReferralCode,
     setAcceptedEULA,
     handleSignUp,
   };

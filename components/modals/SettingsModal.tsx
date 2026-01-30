@@ -21,6 +21,7 @@ interface SettingsModalProps {
   onUnblockUsers: () => void;
   onTermsOfService: () => void;
   onFeedback: () => void;
+  onReferralCode?: () => void;
 }
 
 export default function SettingsModal({
@@ -29,6 +30,7 @@ export default function SettingsModal({
   onUnblockUsers,
   onTermsOfService,
   onFeedback,
+  onReferralCode,
 }: SettingsModalProps) {
   return (
     <Modal
@@ -83,6 +85,19 @@ export default function SettingsModal({
           >
             <Text style={styles.optionText}>FEEDBACK</Text>
           </TouchableOpacity>
+
+          {onReferralCode && (
+            <TouchableOpacity
+              style={styles.optionButton}
+              onPress={() => {
+                triggerHaptic('medium');
+                onReferralCode();
+                onClose();
+              }}
+            >
+              <Text style={styles.optionText}>REFERRAL CODE</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>

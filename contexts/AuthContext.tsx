@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import SHA256 from 'crypto-js/sha256';
-import { initBalance, getBalance } from '../lib/transaction_utils';
+import { initBalance, getBalance, changeBalance } from '../lib/transaction_utils';
 import { initStats } from '../lib/homepage_utils';
 import { notifyWelcome } from '../lib/notifications';
 
@@ -11,11 +11,11 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   onboardingCompleted: boolean | null; // null = not checked yet, true/false = checked
-  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted?: boolean, phoneNumber?: string | null) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted?: boolean, phoneNumber?: string | null, usedReferralCode?: string | null) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   deleteAccount: (userHash: string) => Promise<{ error: any }>;
-  getUserProfile: () => Promise<{ username: string; email: string; hash: string; balance: number; gender?: string | null } | null>;
+  getUserProfile: () => Promise<{ username: string; email: string; hash: string; balance: number; gender?: string | null; referralCode?: string | null } | null>;
   checkOnboardingStatus: () => Promise<void>;
   refreshBalance: () => Promise<void>;
   balanceRefreshTrigger: number; // Internal trigger for balance refresh
@@ -180,10 +180,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted: boolean = false, phoneNumber?: string | null) => {
+  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted: boolean = false, phoneNumber?: string | null, usedReferralCode?: string | null) => {
     try {
       setLoading(true);
       const normalizedEmail = email.toLowerCase();
+
+      // If a referral code was provided, validate it exists and belongs to a different user
+      let referrerHash: string | null = null;
+      if (usedReferralCode && usedReferralCode.trim()) {
+        const normalizedCode = usedReferralCode.toUpperCase().trim();
+        const { data: referrerProfile, error: referrerError } = await supabase
+          .from('profiles')
+          .select('hash')
+          .eq('referral_code', normalizedCode)
+          .maybeSingle();
+        
+        if (referrerError) {
+          console.error('Error checking referral code:', referrerError);
+          return { error: { message: 'Failed to validate referral code. Please try again.' } };
+        }
+        
+        if (!referrerProfile) {
+          return { error: { message: 'Invalid referral code. Please check and try again.' } };
+        }
+        
+        referrerHash = referrerProfile.hash;
+        console.log('✅ Valid referral code found for hash:', referrerHash);
+      }
 
       const { error } = await supabase.auth.signUp({
         email: normalizedEmail,
@@ -194,18 +217,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const userHash = sha256(normalizedEmail + username);
 
-      // Generate unique referral code
-      const referralCode = await generateUniqueReferralCode();
+      // Prevent self-referral (safety check)
+      if (referrerHash === userHash) {
+        return { error: { message: 'You cannot use your own referral code.' } };
+      }
+
+      // Generate unique referral code for the new user
+      const newUserReferralCode = await generateUniqueReferralCode();
 
       const { error: profileError } = await supabase.from('profiles').insert({
         email: normalizedEmail,
         username: username,
         hash: userHash,
-        onboarding_completed: onboardingCompleted, // Set based on whether user came from onboarding
+        onboarding_completed: onboardingCompleted,
         gender: gender || null,
         age: age || null,
         phone_number: phoneNumber || null,
-        referral_code: referralCode,
+        referral_code: newUserReferralCode,
       });
 
       if (profileError) return { error: profileError };
@@ -213,12 +241,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await initBalance(userHash);
       await initStats(userHash);
 
+      // If valid referral code was used, give bonus token to both users
+      if (referrerHash && referrerHash !== userHash) {
+        // Give 1 token to the new user
+        const newUserResult = await changeBalance(userHash, 1);
+        if (newUserResult.ok) {
+          console.log('✅ Gave 1 bonus token to new user for using referral code');
+        } else {
+          console.error('❌ Failed to give token to new user:', newUserResult.error);
+        }
+        
+        // Give 1 token to the referrer
+        const referrerResult = await changeBalance(referrerHash, 1);
+        if (referrerResult.ok) {
+          console.log('✅ Gave 1 bonus token to referrer');
+        } else {
+          console.error('❌ Failed to give token to referrer:', referrerResult.error);
+        }
+      }
+
       // Send welcome notification (don't await - fire and forget to not block signup)
       notifyWelcome(userHash).catch(err => 
         console.log('Non-critical: Failed to send welcome notification', err)
       );
 
-      console.log('✅ User created with referral code:', referralCode);
+      console.log('✅ User created with referral code:', newUserReferralCode);
 
       return { error: null };
     } catch (err) {
@@ -295,7 +342,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('username, email, hash, gender')
+        .select('username, email, hash, gender, referral_code')
         .eq('email', user.email)
         .maybeSingle();
 
@@ -303,7 +350,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const balance = await getBalance(data.hash);
 
-      return { username: data.username, email: data.email, hash: data.hash, balance, gender: data.gender };
+      return { username: data.username, email: data.email, hash: data.hash, balance, gender: data.gender, referralCode: data.referral_code };
     } catch {
       return null;
     }

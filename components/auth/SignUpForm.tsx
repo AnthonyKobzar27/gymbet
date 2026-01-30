@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { triggerHaptic } from '@/lib/haptics';
@@ -21,11 +22,13 @@ interface SignUpFormProps {
   email: string;
   password: string;
   username: string;
+  referralCode: string;
   acceptedEULA: boolean;
   loading: boolean;
   onEmailChange: (email: string) => void;
   onPasswordChange: (password: string) => void;
   onUsernameChange: (username: string) => void;
+  onReferralCodeChange: (code: string) => void;
   onEULAToggle: () => void;
   onSubmit: () => void;
   onTermsPress: () => void;
@@ -36,11 +39,13 @@ export default function SignUpForm({
   email,
   password,
   username,
+  referralCode,
   acceptedEULA,
   loading,
   onEmailChange,
   onPasswordChange,
   onUsernameChange,
+  onReferralCodeChange,
   onEULAToggle,
   onSubmit,
   onTermsPress,
@@ -106,6 +111,21 @@ export default function SignUpForm({
         />
       </View>
 
+      <View style={styles.inputContainer}>
+        <View style={styles.referralLabelContainer}>
+          <Text style={styles.label}>Referral Code </Text>
+        </View>
+        <TextInput
+          style={styles.input}
+          value={referralCode}
+          onChangeText={(text) => onReferralCodeChange(text.toUpperCase())}
+          placeholder="Enter referral code (optional)"
+          placeholderTextColor="#999"
+          autoCapitalize="characters"
+          editable={!loading}
+        />
+      </View>
+
       <TouchableOpacity
         style={styles.eulaContainer}
         onPress={onEULAToggle}
@@ -151,6 +171,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   backButtonText: {
+    marginTop: -20,
     fontSize: 24,
     fontFamily: fontFamily,
     fontWeight: '400',
@@ -182,6 +203,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#000000',
     marginBottom: 8,
+  },
+  referralLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  referralBonus: {
+    fontSize: 14,
+    fontFamily: fontFamily,
+    fontWeight: '600',
+    color: '#666',
+  },
+  tokenIcon: {
+    width: 18,
+    height: 18,
+    marginHorizontal: 2,
   },
   input: {
     borderWidth: 2,

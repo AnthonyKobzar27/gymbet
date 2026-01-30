@@ -27,11 +27,13 @@ export default function SignUpScreen() {
     email,
     password,
     username,
+    referralCode,
     loading,
     acceptedEULA,
     setEmail,
     setPassword,
     setUsername,
+    setReferralCode,
     setAcceptedEULA,
     handleSignUp,
   } = useSignUp(userAge, userGender, userPhoneNumber);
@@ -61,11 +63,13 @@ export default function SignUpScreen() {
             email={email}
             password={password}
             username={username}
+            referralCode={referralCode}
             acceptedEULA={acceptedEULA}
             loading={loading}
             onEmailChange={setEmail}
             onPasswordChange={setPassword}
             onUsernameChange={setUsername}
+            onReferralCodeChange={setReferralCode}
             onEULAToggle={() => setAcceptedEULA(!acceptedEULA)}
             onSubmit={handleSignUp}
             onTermsPress={() => setTermsModalVisible(true)}

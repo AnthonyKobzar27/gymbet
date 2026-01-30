@@ -115,12 +115,7 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 4,
     borderColor: '#000',
-    shadowColor: '#000',
-    shadowOffset: { width: 8, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
-    borderRadius: 0,
+    borderRadius: 16,
   },
   headerRow: {
     flexDirection: 'row',
