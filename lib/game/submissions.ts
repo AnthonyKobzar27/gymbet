@@ -3,6 +3,7 @@ import { GameSubmission } from '@/types/game';
 import { addActivityLogWithId } from '../activityLog/feed';
 import { getRandomValidators, distributeProofToValidators } from '../activityLog/validators';
 import { addGameLog } from './logs';
+import { rescheduleRemindersAfterProof } from '../push_notifications';
 
 export async function submitWakeupProof(
   gameId: string,
@@ -173,6 +174,11 @@ export async function submitWakeupProof(
       console.error('⚠️ CRITICAL: No validators found! Proof will not be distributed. Check if profiles exist in database.');
     }
   }
+
+  // Cancel remaining reminders for today since user submitted their proof
+  rescheduleRemindersAfterProof().catch(err =>
+    console.log('Non-critical: Failed to reschedule reminders after proof', err)
+  );
 
   return { ok: true, isOnTime };
 }

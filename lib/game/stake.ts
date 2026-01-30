@@ -3,7 +3,13 @@ import { deposit } from '../transaction_utils';
 import { addTransaction } from '../stripe_utils';
 import { addGameLog } from './logs';
 import { handleMultipleWinners, handleSingleWinner } from './stakeHelpers';
-import { notifyPlayerEliminated } from '../game_notifications';
+import { notifyPlayerEliminated as pushNotifyPlayerEliminated } from '../game_notifications';
+import { 
+  notifyYouEliminated, 
+  notifyPlayerEliminated as inAppNotifyPlayerEliminated,
+  notifyStakeReceived 
+} from '../notifications';
+import { cancelDailyProofReminders } from '../push_notifications';
 
 export async function redistributeStake(
   gameId: string,
@@ -48,6 +54,13 @@ export async function redistributeStake(
       description: `Payout from eliminated player in game ${gameId}`,
       userHash: player.user_hash
     });
+
+    // Notify player they received stake (only if stake > 0)
+    if (amountPerPlayer > 0) {
+      notifyStakeReceived(player.user_hash, amountPerPlayer).catch(err =>
+        console.log('Non-critical: Failed to send stake received notification', err)
+      );
+    }
   }
 
   await supabase
@@ -67,13 +80,28 @@ export async function redistributeStake(
   await addActivityLog(
     eliminatedUserHash,
     eliminatedUserHash,
-    `Lost $${stakeAmount.toFixed(2)} stake`,
+    stakeAmount > 0 ? `Lost $${stakeAmount.toFixed(2)} stake` : 'Was eliminated from the game',
     'loss'
   );
 
+  // Notify the eliminated player
+  notifyYouEliminated(eliminatedUserHash, stakeAmount).catch(err =>
+    console.log('Non-critical: Failed to send you eliminated notification', err)
+  );
+
+  // Cancel daily reminders for eliminated player (if this is running on their device)
+  cancelDailyProofReminders().catch(err =>
+    console.log('Non-critical: Failed to cancel daily reminders for eliminated player', err)
+  );
+
+  // Notify other players about the elimination
+  inAppNotifyPlayerEliminated(gameId, eliminatedUserHash, amountPerPlayer).catch(err =>
+    console.log('Non-critical: Failed to send player eliminated notification', err)
+  );
+
   // Send push notification about elimination
-  notifyPlayerEliminated(gameId, eliminatedUserHash).catch(err =>
-    console.log('Non-critical: Failed to send elimination notification', err)
+  pushNotifyPlayerEliminated(gameId, eliminatedUserHash).catch(err =>
+    console.log('Non-critical: Failed to send elimination push notification', err)
   );
 
   const { data: remainingPlayers } = await supabase

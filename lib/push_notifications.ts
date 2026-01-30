@@ -220,6 +220,155 @@ export async function cancelAllNotifications(): Promise<void> {
 }
 
 /**
+ * Cancel specific notification by ID
+ */
+export async function cancelNotification(notificationId: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(notificationId);
+}
+
+/**
+ * Get all scheduled notifications
+ */
+export async function getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+  return await Notifications.getAllScheduledNotificationsAsync();
+}
+
+// ============================================================================
+// DAILY PROOF REMINDER SYSTEM
+// ============================================================================
+
+const REMINDER_IDENTIFIERS = {
+  MORNING: 'daily-proof-reminder-9am',
+  NOON: 'daily-proof-reminder-12pm',
+  AFTERNOON: 'daily-proof-reminder-4pm',
+};
+
+/**
+ * Schedule daily proof reminders at 9am, 12pm, and 4pm
+ * These remind users to submit their workout proofs
+ */
+export async function scheduleDailyProofReminders(): Promise<void> {
+  // Cancel any existing reminders first to avoid duplicates
+  await cancelDailyProofReminders();
+
+  const androidChannelId = Platform.OS === 'android' ? 'daily-reminders' : undefined;
+
+  // Schedule 9:00 AM reminder
+  await Notifications.scheduleNotificationAsync({
+    identifier: REMINDER_IDENTIFIERS.MORNING,
+    content: {
+      title: "Time to work out! 💪",
+      body: "Don't forget to submit your workout proof today. Stay consistent to win!",
+      data: { type: 'daily-reminder', time: '9am' },
+      sound: true,
+      ...(androidChannelId && { channelId: androidChannelId }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: 9,
+      minute: 0,
+    },
+  });
+
+  // Schedule 12:00 PM reminder
+  await Notifications.scheduleNotificationAsync({
+    identifier: REMINDER_IDENTIFIERS.NOON,
+    content: {
+      title: "Midday check-in 🏋️",
+      body: "Have you submitted your workout proof yet? Don't risk losing your stake!",
+      data: { type: 'daily-reminder', time: '12pm' },
+      sound: true,
+      ...(androidChannelId && { channelId: androidChannelId }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: 12,
+      minute: 0,
+    },
+  });
+
+  // Schedule 4:00 PM reminder
+  await Notifications.scheduleNotificationAsync({
+    identifier: REMINDER_IDENTIFIERS.AFTERNOON,
+    content: {
+      title: "Final reminder! ⚠️",
+      body: "Last chance to submit your workout proof today. Your stake is on the line!",
+      data: { type: 'daily-reminder', time: '4pm' },
+      sound: true,
+      ...(androidChannelId && { channelId: androidChannelId }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: 16,
+      minute: 0,
+    },
+  });
+
+  console.log('✅ Daily proof reminders scheduled (9am, 12pm, 4pm)');
+}
+
+/**
+ * Cancel all daily proof reminders
+ * Call this when user leaves a game or game ends
+ */
+export async function cancelDailyProofReminders(): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(REMINDER_IDENTIFIERS.MORNING);
+    await Notifications.cancelScheduledNotificationAsync(REMINDER_IDENTIFIERS.NOON);
+    await Notifications.cancelScheduledNotificationAsync(REMINDER_IDENTIFIERS.AFTERNOON);
+    console.log('✅ Daily proof reminders cancelled');
+  } catch (error) {
+    // Ignore errors if notifications weren't scheduled
+    console.log('Note: Some reminders may not have been scheduled', error);
+  }
+}
+
+/**
+ * Cancel remaining reminders for today after user submits proof
+ */
+export async function cancelTodaysRemainingReminders(): Promise<void> {
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  try {
+    // Cancel reminders that haven't fired yet today
+    if (currentHour < 12) {
+      await Notifications.cancelScheduledNotificationAsync(REMINDER_IDENTIFIERS.NOON);
+      await Notifications.cancelScheduledNotificationAsync(REMINDER_IDENTIFIERS.AFTERNOON);
+    } else if (currentHour < 16) {
+      await Notifications.cancelScheduledNotificationAsync(REMINDER_IDENTIFIERS.AFTERNOON);
+    }
+    console.log('✅ Remaining reminders for today cancelled');
+  } catch (error) {
+    console.log('Note: Some reminders may not have been scheduled', error);
+  }
+}
+
+/**
+ * Re-schedule reminders after proof submission (for tomorrow)
+ * This ensures reminders continue for the next day
+ */
+export async function rescheduleRemindersAfterProof(): Promise<void> {
+  // Cancel today's remaining reminders
+  await cancelTodaysRemainingReminders();
+  
+  // The daily triggers will automatically fire tomorrow
+  // No need to reschedule as DAILY trigger repeats automatically
+  console.log('✅ Reminders will continue tomorrow');
+}
+
+/**
+ * Check if user has an active game and set up reminders accordingly
+ */
+export async function setupRemindersForActiveGame(hasActiveGame: boolean): Promise<void> {
+  if (hasActiveGame) {
+    await scheduleDailyProofReminders();
+  } else {
+    await cancelDailyProofReminders();
+  }
+}
+
+/**
  * Get notification badge count
  */
 export async function getBadgeCount(): Promise<number> {

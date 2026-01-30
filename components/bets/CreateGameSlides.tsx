@@ -19,6 +19,7 @@ import { triggerHaptic } from '@/lib/haptics';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDataCache } from '@/contexts/DataCacheContext';
 import SplitTypeSelector from './SplitTypeSelector';
+import { notifyGameCreated } from '@/lib/notifications';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -56,13 +57,13 @@ export default function CreateGameSlides({
   const { refreshBalance, refreshGames } = useDataCache();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [schedule, setSchedule] = useState<WeeklySchedule>({
-    monday: 'upper',
-    tuesday: 'lower',
-    wednesday: 'chest',
-    thursday: 'back',
-    friday: 'arms',
-    saturday: 'cardio',
-    sunday: 'rest',
+    monday: '',
+    tuesday: '',
+    wednesday: '',
+    thursday: '',
+    friday: '',
+    saturday: '',
+    sunday: '',
   });
   const [customValues, setCustomValues] = useState<Record<DayOfWeek, string>>({
     monday: '',
@@ -73,16 +74,37 @@ export default function CreateGameSlides({
     saturday: '',
     sunday: '',
   });
-  const [stake, setStake] = useState('0.5');
+  const [stake, setStake] = useState('0');
   const [creating, setCreating] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const currentConfig = SLIDES[currentSlide];
   const isFirstSlide = currentSlide === 0;
   const isLastSlide = currentSlide === SLIDES.length - 1;
+  
+  // Check if current day slide has a valid selection
+  const isCurrentDayValid = () => {
+    if (currentConfig.type !== 'day' || !currentConfig.day) {
+      return true; // Not a day slide, always valid
+    }
+    const dayValue = schedule[currentConfig.day];
+    // Must have a selection, and if it's "other", must have custom value
+    return dayValue && (dayValue !== 'other' || customValues[currentConfig.day]);
+  };
+  
+  const canProceed = isCurrentDayValid();
 
   const handleNext = () => {
     if (currentSlide < SLIDES.length - 1) {
+      // Check if current slide is a day slide and if it has been selected
+      if (currentConfig.type === 'day' && currentConfig.day) {
+        const dayValue = schedule[currentConfig.day];
+        // Check if day is selected and if it's "other", check if custom value is filled
+        if (!dayValue || (dayValue === 'other' && !customValues[currentConfig.day])) {
+          Alert.alert('Selection Required', `Please select a workout type for ${DAY_LABELS[currentConfig.day]}`);
+          return;
+        }
+      }
       triggerHaptic('light');
       setCurrentSlide(currentSlide + 1);
     }
@@ -100,15 +122,24 @@ export default function CreateGameSlides({
   const handleClose = () => {
     setCurrentSlide(0);
     setSchedule({
-      monday: 'upper',
-      tuesday: 'lower',
-      wednesday: 'chest',
-      thursday: 'back',
-      friday: 'arms',
-      saturday: 'cardio',
-      sunday: 'rest',
+      monday: '',
+      tuesday: '',
+      wednesday: '',
+      thursday: '',
+      friday: '',
+      saturday: '',
+      sunday: '',
     });
-    setStake('0.5');
+    setCustomValues({
+      monday: '',
+      tuesday: '',
+      wednesday: '',
+      thursday: '',
+      friday: '',
+      saturday: '',
+      sunday: '',
+    });
+    setStake('0');
     onClose();
   };
 
@@ -135,8 +166,23 @@ export default function CreateGameSlides({
 
   const handlePublishAndJoin = async () => {
     const stakeValue = parseFloat(stake);
-    if (isNaN(stakeValue) || stakeValue < MIN_STAKE) {
-      Alert.alert('Invalid Stake', `Minimum stake is ${MIN_STAKE} GYMBET tokens`);
+    if (isNaN(stakeValue) || stakeValue < 0 || (stakeValue > 0 && stakeValue < MIN_STAKE)) {
+      Alert.alert('Invalid Stake', stakeValue === 0 ? 'Stake must be 0 or at least ${MIN_STAKE} GYMBET tokens' : `Minimum stake is ${MIN_STAKE} GYMBET tokens`);
+      return;
+    }
+
+    // Validate all days are selected
+    const finalSchedule = getFinalSchedule();
+    const missingDays: string[] = [];
+    DAYS_OF_WEEK.forEach((day) => {
+      const dayValue = finalSchedule[day];
+      if (!dayValue || (dayValue === 'other' && !customValues[day])) {
+        missingDays.push(DAY_LABELS[day]);
+      }
+    });
+
+    if (missingDays.length > 0) {
+      Alert.alert('Incomplete Schedule', `Please select workout types for: ${missingDays.join(', ')}`);
       return;
     }
 
@@ -144,7 +190,6 @@ export default function CreateGameSlides({
     triggerHaptic('medium');
 
     try {
-      const finalSchedule = getFinalSchedule();
       console.log('Creating game with schedule:', finalSchedule, 'stake:', stakeValue);
       
       const result = await createGame(finalSchedule, stakeValue);
@@ -156,6 +201,11 @@ export default function CreateGameSlides({
         console.log('Got profile:', profile?.hash);
         
         if (profile?.hash) {
+          // Send game created notification
+          notifyGameCreated(profile.hash, stakeValue).catch(err =>
+            console.log('Non-critical: Failed to send game created notification', err)
+          );
+          
           const joinResult = await joinGame(result.game.id, profile.hash);
           console.log('Join game result:', joinResult);
           
@@ -187,7 +237,7 @@ export default function CreateGameSlides({
       <Text style={[styles.slideSubtitle, styles.slideSubtitleMargin]}>What workout will you do on {DAY_LABELS[day]}?</Text>
       
       <SplitTypeSelector
-        selectedType={schedule[day]}
+        selectedType={schedule[day] || ''}
         onSelectType={(type) => handleSelectSplit(day, type)}
         customValue={customValues[day]}
         onCustomValueChange={(value) => handleCustomValueChange(day, value)}
@@ -199,7 +249,7 @@ export default function CreateGameSlides({
     <View style={styles.slideContent}>
       <Text style={styles.slideTitle}>Set Your Stake</Text>
       <View style={styles.subtitleRow}>
-        <Text style={styles.slideSubtitle}>Minimum stake is {MIN_STAKE}</Text>
+        <Text style={styles.slideSubtitle}>Stake can be 0 (free) or minimum {MIN_STAKE}</Text>
         <Image
           source={require('@/assets/images/token.png')}
           style={styles.inlineTokenImage}
@@ -223,7 +273,7 @@ export default function CreateGameSlides({
       </View>
       
       <View style={styles.quickStakeButtons}>
-        {[0.5, 1, 2, 5].map((amount) => (
+        {[0, 0.5, 1, 2, 5].map((amount) => (
           <TouchableOpacity
             key={amount}
             style={[
@@ -349,8 +399,9 @@ export default function CreateGameSlides({
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={styles.nextButton}
+                style={[styles.nextButton, !canProceed && styles.buttonDisabled]}
                 onPress={handleNext}
+                disabled={!canProceed}
               >
                 <Text style={styles.nextButtonText}>NEXT</Text>
               </TouchableOpacity>

@@ -4,7 +4,7 @@ import { User, Session } from '@supabase/supabase-js';
 import SHA256 from 'crypto-js/sha256';
 import { initBalance, getBalance } from '../lib/transaction_utils';
 import { initStats } from '../lib/homepage_utils';
-import { createNotification } from '../lib/notification_utils';
+import { notifyWelcome } from '../lib/notifications';
 
 interface AuthContextType {
   user: User | null;
@@ -89,14 +89,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      
-      // Check onboarding status after session is loaded
-      await checkStatusForUser(session?.user?.id);
-    });
+    // Handle session initialization with proper error handling
+    const initializeSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          // If there's an error (e.g., invalid refresh token), clear the session
+          console.log('Session error, clearing invalid session:', error.message);
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+        } else {
+          setSession(session);
+          setUser(session?.user ?? null);
+          // Check onboarding status after session is loaded
+          await checkStatusForUser(session?.user?.id);
+        }
+      } catch (error: any) {
+        // Catch any unexpected errors and ensure we don't get stuck on loading screen
+        console.error('Error initializing session:', error);
+        // Clear any potentially invalid session
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          // Ignore sign out errors
+        }
+        setSession(null);
+        setUser(null);
+      } finally {
+        // Always set loading to false, even if there was an error
+        setLoading(false);
+      }
+    };
+
+    initializeSession();
 
     const {
       data: { subscription },
@@ -139,12 +166,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await initBalance(userHash);
       await initStats(userHash);
 
-      // Send welcome notification
-      await createNotification(
-        userHash,
-        'Welcome To Gymbets',
-        'Thanks for joining Gymbets! Start by joining a game or creating your own. Good luck and stay consistent!',
-        'welcome'
+      // Send welcome notification (don't await - fire and forget to not block signup)
+      notifyWelcome(userHash).catch(err => 
+        console.log('Non-critical: Failed to send welcome notification', err)
       );
 
       return { error: null };

@@ -2,7 +2,14 @@ import { supabase } from '../supabase';
 import { Game, WeeklySchedule } from '@/types/game';
 import { getBalance } from '../transaction_utils';
 import { addGameLog } from './logs';
-import { notifyGameStarted, notifyPlayerJoined } from '../game_notifications';
+import { notifyGameStarted as pushNotifyGameStarted, notifyPlayerJoined as pushNotifyPlayerJoined } from '../game_notifications';
+import { 
+  notifyGameCreated, 
+  notifyGameJoined, 
+  notifyPlayerJoinedGame, 
+  notifyGameStarted as inAppNotifyGameStarted 
+} from '../notifications';
+import { scheduleDailyProofReminders, cancelDailyProofReminders } from '../push_notifications';
 
 function parseWeeklySchedule(splitType: string): WeeklySchedule {
   try {
@@ -62,6 +69,15 @@ export async function createGame(
   game.weekly_schedule = parseWeeklySchedule(game.split_type);
 
   return { ok: true, game };
+}
+
+/**
+ * Notify user that they created a game (call after joining)
+ */
+export async function notifyGameCreation(userHash: string, stake: number): Promise<void> {
+  notifyGameCreated(userHash, stake).catch(err =>
+    console.log('Non-critical: Failed to send game created notification', err)
+  );
 }
 
 export async function getJoinableGames(onlyFreeGames: boolean = false): Promise<Game[]> {
@@ -175,12 +191,7 @@ export async function joinGame(
     return { ok: false, error: { message: 'You already have an active game. Leave it first to join another.' } };
   }
 
-  const userBalance = await getBalance(userHash);
-
-  if (userBalance < game.stake) {
-    return { ok: false, error: { message: `Insufficient balance. Need $${game.stake.toFixed(2)}, but you have $${userBalance.toFixed(2)}` } };
-  }
-
+  // Get profile first (needed for both stake deduction and refund logic)
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('user_id')
@@ -192,18 +203,27 @@ export async function joinGame(
     return { ok: false, error: { message: 'Failed to get user profile' } };
   }
 
-  const { data: updateResult, error: updateError } = await supabase
-    .rpc('update_balance_atomic', {
-      p_user_id: profile.user_id,
-      p_user_hash: userHash,
-      p_delta: -game.stake,
-      p_transaction_type: 'stake',
-      p_description: `Staked $${game.stake.toFixed(2)} for game ${gameId}`
-    });
+  // Only check balance and deduct stake if stake is greater than 0
+  if (game.stake > 0) {
+    const userBalance = await getBalance(userHash);
 
-  if (updateError || !updateResult?.success) {
-    console.error('Failed to deduct stake:', updateError || updateResult?.error);
-    return { ok: false, error: { message: 'Failed to process stake payment: ' + (updateError?.message || updateResult?.error || 'Unknown error') } };
+    if (userBalance < game.stake) {
+      return { ok: false, error: { message: `Insufficient balance. Need $${game.stake.toFixed(2)}, but you have $${userBalance.toFixed(2)}` } };
+    }
+
+    const { data: updateResult, error: updateError } = await supabase
+      .rpc('update_balance_atomic', {
+        p_user_id: profile.user_id,
+        p_user_hash: userHash,
+        p_delta: -game.stake,
+        p_transaction_type: 'stake',
+        p_description: `Staked $${game.stake.toFixed(2)} for game ${gameId}`
+      });
+
+    if (updateError || !updateResult?.success) {
+      console.error('Failed to deduct stake:', updateError || updateResult?.error);
+      return { ok: false, error: { message: 'Failed to process stake payment: ' + (updateError?.message || updateResult?.error || 'Unknown error') } };
+    }
   }
 
   const { error: insertError } = await supabase
@@ -217,17 +237,20 @@ export async function joinGame(
 
   if (insertError) {
     console.error('Failed to join game:', insertError);
-    const { error: refundError } = await supabase
-      .rpc('update_balance_atomic', {
-        p_user_id: profile.user_id,
-        p_user_hash: userHash,
-        p_delta: game.stake,
-        p_transaction_type: 'deposit',
-        p_description: `Refund: Failed to join game ${gameId}`
-      });
-    
-    if (refundError) {
-      console.error('❌ CRITICAL: Failed to refund stake after insert failure!', refundError);
+    // Only refund if stake was deducted (stake > 0)
+    if (game.stake > 0) {
+      const { error: refundError } = await supabase
+        .rpc('update_balance_atomic', {
+          p_user_id: profile.user_id,
+          p_user_hash: userHash,
+          p_delta: game.stake,
+          p_transaction_type: 'deposit',
+          p_description: `Refund: Failed to join game ${gameId}`
+        });
+      
+      if (refundError) {
+        console.error('❌ CRITICAL: Failed to refund stake after insert failure!', refundError);
+      }
     }
     
     return { ok: false, error: insertError };
@@ -265,19 +288,35 @@ export async function joinGame(
   await addActivityLog(
     userHash,
     userHash,
-    `joined a game with $${game.stake.toFixed(2)} stake`,
+    game.stake === 0 
+      ? 'joined a free game'
+      : `joined a game with $${game.stake.toFixed(2)} stake`,
     'bet'
   );
 
-  // Send push notification to other players about new player joining
-  notifyPlayerJoined(gameId, userHash).catch(err => 
+  // Send in-app notification to the user who joined
+  notifyGameJoined(userHash, game.stake, newPlayerCount).catch(err =>
+    console.log('Non-critical: Failed to send game joined notification', err)
+  );
+
+  // Send in-app notification to other players about new player joining
+  notifyPlayerJoinedGame(gameId, userHash, newPlayerCount).catch(err =>
     console.log('Non-critical: Failed to send player joined notification', err)
+  );
+
+  // Send push notification to other players about new player joining
+  pushNotifyPlayerJoined(gameId, userHash).catch(err => 
+    console.log('Non-critical: Failed to send player joined push notification', err)
   );
 
   if (newStatus === 'active') {
     // Game just started - notify all players!
-    notifyGameStarted(gameId).catch(err => 
-      console.log('Non-critical: Failed to send game started notification', err)
+    inAppNotifyGameStarted(gameId).catch(err =>
+      console.log('Non-critical: Failed to send game started in-app notification', err)
+    );
+    
+    pushNotifyGameStarted(gameId).catch(err => 
+      console.log('Non-critical: Failed to send game started push notification', err)
     );
 
     await addGameLog(
@@ -287,6 +326,11 @@ export async function joinGame(
       'game_start'
     );
   }
+
+  // Schedule daily proof reminders for the user who just joined
+  scheduleDailyProofReminders().catch(err =>
+    console.log('Non-critical: Failed to schedule daily reminders', err)
+  );
 
   return { ok: true };
 }
@@ -381,6 +425,11 @@ export async function leaveGame(
     userHash,
     `Player 0x${userHash.substring(0, 8)} left the game`,
     'join'
+  );
+
+  // Cancel daily proof reminders since user left the game
+  cancelDailyProofReminders().catch(err =>
+    console.log('Non-critical: Failed to cancel daily reminders', err)
   );
 
   return { ok: true, refunded: game.stake };

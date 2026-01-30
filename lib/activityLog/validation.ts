@@ -1,7 +1,8 @@
 import { supabase } from '../supabase';
 import { distributeVoteRewards } from './rewards';
 import { redistributeStake, addGameLog } from '../game_utils';
-import { notifyProofApproved, notifyProofRejected } from '../game_notifications';
+import { notifyProofApproved as pushNotifyProofApproved, notifyProofRejected as pushNotifyProofRejected } from '../game_notifications';
+import { notifyProofApproved as inAppNotifyProofApproved, notifyProofRejected as inAppNotifyProofRejected } from '../notifications';
 
 const MIN_VOTES_FOR_DECISION = 10;
 
@@ -80,12 +81,22 @@ export async function checkPBFTValidation(activityLogId: number): Promise<{
 
     if (proofData) {
       if (newStatus === 'approved') {
-        notifyProofApproved(proofData.game_id || '', proofData.user_hash).catch(err =>
-          console.log('Non-critical: Failed to send proof approved notification', err)
+        // In-app notification
+        inAppNotifyProofApproved(proofData.user_hash).catch(err =>
+          console.log('Non-critical: Failed to send proof approved in-app notification', err)
+        );
+        // Push notification
+        pushNotifyProofApproved(proofData.game_id || '', proofData.user_hash).catch(err =>
+          console.log('Non-critical: Failed to send proof approved push notification', err)
         );
       } else if (newStatus === 'rejected') {
-        notifyProofRejected(proofData.game_id || '', proofData.user_hash).catch(err =>
-          console.log('Non-critical: Failed to send proof rejected notification', err)
+        // In-app notification
+        inAppNotifyProofRejected(proofData.user_hash).catch(err =>
+          console.log('Non-critical: Failed to send proof rejected in-app notification', err)
+        );
+        // Push notification
+        pushNotifyProofRejected(proofData.game_id || '', proofData.user_hash).catch(err =>
+          console.log('Non-critical: Failed to send proof rejected push notification', err)
         );
       }
     }

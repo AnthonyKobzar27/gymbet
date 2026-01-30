@@ -2,7 +2,9 @@ import { supabase } from '../supabase';
 import { deposit } from '../transaction_utils';
 import { addTransaction } from '../stripe_utils';
 import { addGameLog } from './logs';
-import { notifyGameWon } from '../game_notifications';
+import { notifyGameWon as pushNotifyGameWon } from '../game_notifications';
+import { notifyGameWon as inAppNotifyGameWon, notifyGameEnded } from '../notifications';
+import { cancelDailyProofReminders } from '../push_notifications';
 
 export async function handleMultipleWinners(
   gameId: string,
@@ -78,13 +80,42 @@ export async function handleMultipleWinners(
     'game_end'
   );
 
-  // Notify all winners
+  // Notify all winners with in-app and push notifications
   for (const winner of winners) {
-    const winAmount = stakeAmount; // Each winner gets their stake back + share of eliminated stakes
-    notifyGameWon(gameId, winner.user_hash, winAmount).catch(err =>
-      console.log('Non-critical: Failed to send game won notification', err)
+    // Calculate total winnings for this winner
+    const { data: payouts } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('user_hash', winner.user_hash)
+      .eq('type', 'payout')
+      .like('description', `%game ${gameId}%`);
+
+    let totalWinnings = stakeAmount; // Start with stake refund
+    if (payouts) {
+      totalWinnings += payouts.reduce((sum, tx) => sum + (parseFloat(tx.amount.toString()) || 0), 0);
+    }
+
+    // In-app notification
+    inAppNotifyGameWon(winner.user_hash, totalWinnings, stakeAmount).catch(err =>
+      console.log('Non-critical: Failed to send game won in-app notification', err)
+    );
+
+    // Push notification
+    pushNotifyGameWon(gameId, winner.user_hash, totalWinnings).catch(err =>
+      console.log('Non-critical: Failed to send game won push notification', err)
     );
   }
+
+  // Notify game ended
+  notifyGameEnded(gameId, winners.length, eliminatedCount).catch(err =>
+    console.log('Non-critical: Failed to send game ended notification', err)
+  );
+
+  // Cancel daily reminders for all winners since game is over
+  // Note: Each user's reminders are on their own device, so this only works for the current user
+  cancelDailyProofReminders().catch(err =>
+    console.log('Non-critical: Failed to cancel daily reminders', err)
+  );
 }
 
 export async function handleSingleWinner(
@@ -158,10 +189,22 @@ export async function handleSingleWinner(
     'win'
   );
 
-  // Send push notification to winner
+  // Calculate total won for notifications
   const totalWon = totalWinnings > 0 ? (totalWinnings * 0.90) + stakeAmount : stakeAmount;
-  notifyGameWon(gameId, winner.user_hash, totalWon).catch(err =>
-    console.log('Non-critical: Failed to send game won notification', err)
+
+  // In-app notification to winner
+  inAppNotifyGameWon(winner.user_hash, totalWon, stakeAmount).catch(err =>
+    console.log('Non-critical: Failed to send game won in-app notification', err)
+  );
+
+  // Push notification to winner
+  pushNotifyGameWon(gameId, winner.user_hash, totalWon).catch(err =>
+    console.log('Non-critical: Failed to send game won push notification', err)
+  );
+
+  // Cancel daily reminders since game is over
+  cancelDailyProofReminders().catch(err =>
+    console.log('Non-critical: Failed to cancel daily reminders', err)
   );
 }
 

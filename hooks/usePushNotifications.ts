@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDataCache } from '@/contexts/DataCacheContext';
 import { 
   registerForPushNotifications, 
   savePushToken,
   removePushToken,
   addNotificationReceivedListener,
   addNotificationResponseListener,
+  setupRemindersForActiveGame,
 } from '@/lib/push_notifications';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 
 export function usePushNotifications() {
   const { user, getUserProfile } = useAuth();
+  const { cache } = useDataCache();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notification, setNotification] = useState<Notifications.Notification | null>(null);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
@@ -22,8 +25,9 @@ export function usePushNotifications() {
 
     const setupPushNotifications = async () => {
       if (!user) {
-        // User logged out - clean up token from state
+        // User logged out - clean up token from state and cancel reminders
         setExpoPushToken(null);
+        setupRemindersForActiveGame(false);
         return;
       }
 
@@ -104,6 +108,16 @@ export function usePushNotifications() {
       responseListener.current = null;
     };
   }, [user]);
+
+  // Set up daily reminders based on active game status
+  useEffect(() => {
+    if (user && cache.isPreloaded) {
+      const hasActiveGame = cache.activeGame !== null;
+      setupRemindersForActiveGame(hasActiveGame).catch(err =>
+        console.log('Non-critical: Failed to setup daily reminders', err)
+      );
+    }
+  }, [user, cache.isPreloaded, cache.activeGame]);
 
   return {
     expoPushToken,
