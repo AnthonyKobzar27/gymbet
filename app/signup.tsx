@@ -20,6 +20,7 @@ export default function SignUpScreen() {
 
   const userAge = params.age ? Number(params.age) : null;
   const userGender = params.gender ? String(params.gender) : null;
+  const userPhoneNumber = params.phoneNumber ? String(params.phoneNumber) : null;
   const cameFromOnboarding = userAge !== null || userGender !== null;
 
   const {
@@ -33,7 +34,7 @@ export default function SignUpScreen() {
     setUsername,
     setAcceptedEULA,
     handleSignUp,
-  } = useSignUp(userAge, userGender);
+  } = useSignUp(userAge, userGender, userPhoneNumber);
 
   if (!cameFromOnboarding) {
     return (

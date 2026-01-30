@@ -4,6 +4,8 @@ import { triggerHaptic } from '@/lib/haptics';
 import { router } from 'expo-router';
 import OnboardingFooter from './OnboardingFooter';
 import QuestionsSlide from './QuestionsSlide';
+import PhoneInputSlide from './PhoneInputSlide';
+import PhoneVerifySlide from './PhoneVerifySlide';
 import WelcomeSlide from './slides/WelcomeSlide';
 import HowItWorksSlide from './slides/HowItWorksSlide';
 import ProofsSlide from './slides/ProofsSlide';
@@ -14,6 +16,9 @@ import LetsGetStartedSlide from './slides/LetsGetStartedSlide';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TOTAL_SLIDES = 6;
 
+// Onboarding step flow: slides -> questions -> phone input -> phone verify -> signup
+type OnboardingStep = 'slides' | 'questions' | 'phone-input' | 'phone-verify';
+
 interface OnboardingScreenProps {
   onComplete: () => void;
   initialShowQuestions?: boolean;
@@ -21,8 +26,16 @@ interface OnboardingScreenProps {
 
 export default function OnboardingScreen({ onComplete, initialShowQuestions = false }: OnboardingScreenProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>(initialShowQuestions ? 'questions' : 'slides');
   const [showQuestionsSlide, setShowQuestionsSlide] = useState(initialShowQuestions);
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  // User data collected during onboarding
+  const [userData, setUserData] = useState({
+    age: 0,
+    gender: null as string | null,
+    phoneNumber: '',
+  });
 
   // If coming back from signup, ensure we're on the last slide
   React.useEffect(() => {
@@ -47,26 +60,50 @@ export default function OnboardingScreen({ onComplete, initialShowQuestions = fa
       });
     } else {
       // Show questions slide instead of login modal
+      setCurrentStep('questions');
       setShowQuestionsSlide(true);
     }
   };
 
   const handleQuestionsComplete = (age: number, gender: string | null) => {
+    // Save age/gender and proceed to phone input
+    setUserData(prev => ({ ...prev, age, gender }));
     setShowQuestionsSlide(false);
-    // Redirect to signup page with age and gender params
-    router.replace({
-      pathname: '/signup',
-      params: {
-        age: age.toString(),
-        gender: gender || '',
-      },
-    });
+    setCurrentStep('phone-input');
   };
 
   const handleQuestionsBack = () => {
     setShowQuestionsSlide(false);
+    setCurrentStep('slides');
     // Go back to last onboarding slide
     setCurrentSlide(TOTAL_SLIDES - 1);
+  };
+
+  const handlePhoneInputComplete = (phoneNumber: string) => {
+    // Save phone number and proceed to verification
+    setUserData(prev => ({ ...prev, phoneNumber }));
+    setCurrentStep('phone-verify');
+  };
+
+  const handlePhoneInputBack = () => {
+    setCurrentStep('questions');
+    setShowQuestionsSlide(true);
+  };
+
+  const handlePhoneVerifyComplete = () => {
+    // All data collected, proceed to signup
+    router.replace({
+      pathname: '/signup',
+      params: {
+        age: userData.age.toString(),
+        gender: userData.gender || '',
+        phoneNumber: userData.phoneNumber,
+      },
+    });
+  };
+
+  const handlePhoneVerifyBack = () => {
+    setCurrentStep('phone-input');
   };
 
   const handleBack = () => {
@@ -83,7 +120,33 @@ export default function OnboardingScreen({ onComplete, initialShowQuestions = fa
   };
 
 
-  if (showQuestionsSlide) {
+  // Show phone verification slide
+  if (currentStep === 'phone-verify') {
+    return (
+      <View style={styles.container}>
+        <PhoneVerifySlide
+          phoneNumber={userData.phoneNumber}
+          onComplete={handlePhoneVerifyComplete}
+          onBack={handlePhoneVerifyBack}
+        />
+      </View>
+    );
+  }
+
+  // Show phone input slide
+  if (currentStep === 'phone-input') {
+    return (
+      <View style={styles.container}>
+        <PhoneInputSlide
+          onComplete={handlePhoneInputComplete}
+          onBack={handlePhoneInputBack}
+        />
+      </View>
+    );
+  }
+
+  // Show questions slide
+  if (showQuestionsSlide || currentStep === 'questions') {
     return (
       <View style={styles.container}>
         <QuestionsSlide 

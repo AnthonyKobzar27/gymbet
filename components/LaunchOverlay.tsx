@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Image } from 'react-native';
 import { triggerHaptic } from '@/lib/haptics';
 
@@ -12,6 +12,7 @@ export function LaunchOverlay({ onFinished }: LaunchOverlayProps) {
   const opacity = useRef(new Animated.Value(1)).current;
   // Start smaller so the logo can zoom out and expand
   const scale = useRef(new Animated.Value(0.4)).current;
+  const [isFinished, setIsFinished] = useState(false);
 
   useEffect(() => {
     // Kick off a satisfying haptic when the animation starts
@@ -46,13 +47,19 @@ export function LaunchOverlay({ onFinished }: LaunchOverlayProps) {
     ]).start(() => {
       clearTimeout(midHapticTimeout);
       triggerHaptic('success');
+      setIsFinished(true);
       onFinished?.();
     });
   }, [opacity, scale, onFinished]);
 
+  // Don't render anything after animation finishes
+  if (isFinished) {
+    return null;
+  }
+
   return (
     <Animated.View
-      pointerEvents="auto"
+      pointerEvents="none"
       style={[
         StyleSheet.absoluteFillObject,
         styles.overlay,

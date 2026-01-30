@@ -11,7 +11,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   onboardingCompleted: boolean | null; // null = not checked yet, true/false = checked
-  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted?: boolean) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted?: boolean, phoneNumber?: string | null) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   deleteAccount: (userHash: string) => Promise<{ error: any }>;
@@ -19,6 +19,48 @@ interface AuthContextType {
   checkOnboardingStatus: () => Promise<void>;
   refreshBalance: () => Promise<void>;
   balanceRefreshTrigger: number; // Internal trigger for balance refresh
+}
+
+/**
+ * Generate a unique 10-digit referral code
+ */
+function generateReferralCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 10; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * Generate a unique referral code (checks database for uniqueness)
+ */
+async function generateUniqueReferralCode(): Promise<string> {
+  let code = generateReferralCode();
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (attempts < maxAttempts) {
+    // Check if code already exists
+    const { data } = await supabase
+      .from('profiles')
+      .select('referral_code')
+      .eq('referral_code', code)
+      .maybeSingle();
+
+    if (!data) {
+      // Code is unique
+      return code;
+    }
+
+    // Generate a new code and try again
+    code = generateReferralCode();
+    attempts++;
+  }
+
+  // If we've exhausted attempts, add timestamp to ensure uniqueness
+  return code + Date.now().toString().slice(-2);
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -138,7 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted: boolean = false) => {
+  const signUp = async (email: string, password: string, username: string, age?: number | null, gender?: string | null, onboardingCompleted: boolean = false, phoneNumber?: string | null) => {
     try {
       setLoading(true);
       const normalizedEmail = email.toLowerCase();
@@ -152,6 +194,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const userHash = sha256(normalizedEmail + username);
 
+      // Generate unique referral code
+      const referralCode = await generateUniqueReferralCode();
+
       const { error: profileError } = await supabase.from('profiles').insert({
         email: normalizedEmail,
         username: username,
@@ -159,6 +204,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         onboarding_completed: onboardingCompleted, // Set based on whether user came from onboarding
         gender: gender || null,
         age: age || null,
+        phone_number: phoneNumber || null,
+        referral_code: referralCode,
       });
 
       if (profileError) return { error: profileError };
@@ -170,6 +217,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notifyWelcome(userHash).catch(err => 
         console.log('Non-critical: Failed to send welcome notification', err)
       );
+
+      console.log('✅ User created with referral code:', referralCode);
 
       return { error: null };
     } catch (err) {

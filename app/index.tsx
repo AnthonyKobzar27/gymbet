@@ -30,12 +30,8 @@ export default function Index() {
     }
   }, [user, loading, segments]);
 
-  // Show loading while checking auth state
-  if (loading) {
-    return <LoadingView />;
-  }
-
-  // Return null while redirecting
-  return null;
+  // Always show loading view - never return null
+  // This prevents the black screen issue
+  return <LoadingView />;
 }
 

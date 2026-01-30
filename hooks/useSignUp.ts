@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { triggerHaptic } from '@/lib/haptics';
 import { useAuth } from '@/contexts/AuthContext';
 
-export const useSignUp = (userAge: number | null, userGender: string | null) => {
+export const useSignUp = (userAge: number | null, userGender: string | null, userPhoneNumber: string | null = null) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -33,7 +33,7 @@ export const useSignUp = (userAge: number | null, userGender: string | null) => 
 
     try {
       const cameFromOnboarding = userAge !== null || userGender !== null;
-      const { error } = await signUp(email, password, username, userAge, userGender, cameFromOnboarding);
+      const { error } = await signUp(email, password, username, userAge, userGender, cameFromOnboarding, userPhoneNumber);
       if (error) throw error;
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -47,7 +47,7 @@ export const useSignUp = (userAge: number | null, userGender: string | null) => 
     } finally {
       setLoading(false);
     }
-  }, [email, password, username, acceptedEULA, userAge, userGender, signUp, checkOnboardingStatus]);
+  }, [email, password, username, acceptedEULA, userAge, userGender, userPhoneNumber, signUp, checkOnboardingStatus]);
 
   return {
     email,
